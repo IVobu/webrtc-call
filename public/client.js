@@ -932,6 +932,7 @@ function removePeer(peerId) {
     tile.remove();
   }
   updateParticipantCount();
+  updateStageEmpty();
 }
 
 // ---------- Partage d'écran ----------
