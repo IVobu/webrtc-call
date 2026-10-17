@@ -937,26 +937,8 @@ input:focus {
   background: #16213e;
 }
 
-.screen-audio-option {
-  margin: 0 0 8px;
-  padding: 8px;
-  border: 1px solid #344765;
-  border-radius: 6px;
-  background: #16213e;
-}
-
-.screen-audio-option strong {
-  display: block;
-  color: #dbe8ff;
-  font-size: 0.82rem;
-}
-
-.screen-audio-option .settings-status {
-  margin-top: 5px;
-}
-
-.avatars-hidden .avatar-view,
-.avatars-hidden .avatar-fallback {
+.pseudos-hidden .video-label,
+.pseudos-hidden .share-label {
   visibility: hidden;
 }
 

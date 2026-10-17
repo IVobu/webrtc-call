@@ -312,9 +312,9 @@ function createClient() {
       remoteAvatarProfiles, localAvatarProfile, peers, setLocalSpeaking,
       saveAvatarPreferences, loadAvatarProfile, getRoomCodeFromHash,
       makeRoomLink, makeOverlayLink, clearRoomCodeFromAddress, saveName,
-      loadName, NAME_STORAGE_KEY, remoteAudio, participantRows,
+      loadName, NAME_STORAGE_KEY, remoteAudio, participantRows, createParticipantRow,
       loadLayoutPreferences, saveLayoutPreferences, applyLayoutPreferences,
-      setAvatarsVisible, layoutPreferences: () => layoutPreferences,
+      setPseudonymsVisible, layoutPreferences: () => layoutPreferences,
       resizePanelFromKeyboard, callLayout
     };`, context);
   return Object.assign(context.testApi, {
@@ -379,7 +379,7 @@ async function run() {
   assert.match(markup, /id="cam-btn"[^>]*aria-label="Activer la caméra"[^>]*>[\s\S]*?<svg/);
   assert.match(markup, /id="screen-btn"[^>]*aria-label="Partager un écran ou une fenêtre"[^>]*>[\s\S]*?<svg/);
   assert.doesNotMatch(markup, /privacy-mode|Masquer les noms/);
-  assert.match(markup, /id="show-avatars"[^>]*checked/);
+  assert.match(markup, /id="show-pseudonyms"[^>]*checked/);
   assert.match(markup, /<details class="settings-panel call-avatar-settings">[\s\S]*?id="call-avatar-idle-input"[^>]*accept="image\/png,image\/jpeg,image\/gif,image\/webp"[\s\S]*?id="call-avatar-talking-input"[^>]*accept="image\/png,image\/jpeg,image\/gif,image\/webp"[\s\S]*?id="call-avatar-idle-preview"[\s\S]*?id="call-avatar-talking-preview"[\s\S]*?id="call-avatar-status"[\s\S]*?<\/details>/);
   assert.match(markup, /PNG, JPEG, GIF ou WebP \(250 Ko maximum\)[\s\S]*?remplace uniquement l'image du mode choisi/);
   assert.match(markup, /participants-resizer/);
@@ -388,17 +388,13 @@ async function run() {
   assert.match(styles, /\.room-menu-content/);
   assert.match(styles, /\.ctrl-btn svg/);
   assert.match(styles, /#local-tile \.video-label\s*\{[^}]*top:\s*8px[^}]*bottom:\s*auto/s);
-  const audioOptionIndex = markup.indexOf("Audio du partage d'écran activé par défaut");
-  const settingsIndex = markup.indexOf("class=\"call-settings\"");
-  const firstSettingsDetailsIndex = markup.indexOf("<details class=\"settings-panel screen-settings\">", settingsIndex);
-  assert(audioOptionIndex > settingsIndex && audioOptionIndex < firstSettingsDetailsIndex,
-    "screen-share audio status must remain visible outside collapsible settings");
-  assert.doesNotMatch(markup, /id="screen-share-audio"/, "audio capture should not have an opt-out toggle");
-  assert.match(markup, /Certains navigateurs ou sources ne fournissent pas de piste audio/);
+  assert.doesNotMatch(markup, /screen-share-audio|Audio du partage d'écran activé par défaut/,
+    "share audio should not have a separate settings checkbox");
+  assert.doesNotMatch(markup, /screen-audio-option/);
   assert.match(clientSource, /getDisplayMedia\(\{[\s\S]*?audio:\s*true/);
   assert.match(styles, /\.share-audio-controls/);
-  assert.match(styles, /\.avatars-hidden \.avatar-view,\s*\.avatars-hidden \.avatar-fallback/);
-  assert.doesNotMatch(styles, /\.avatars-hidden[^}]*participant-name/);
+  assert.match(styles, /\.pseudos-hidden \.video-label,\s*\.pseudos-hidden \.share-label/);
+  assert.doesNotMatch(styles, /\.pseudos-hidden[^}]*participant-name/);
   assert.match(styles, /#call-screen\s*\{[^}]*height:\s*100vh/s);
   assert.match(styles, /grid-template-areas:\s*"participants participants-resizer main settings-resizer settings"/);
   assert.match(styles, /\.share-tile,\s*\.local-share-tile\s*\{[^}]*resize:\s*both/s);
@@ -457,13 +453,18 @@ async function run() {
   app.applyLayoutPreferences();
   assert.equal(app.callLayout.classList.contains("settings-docked"), true);
   assert.equal(app.callLayout.style.values["--settings-width"], "54px");
-  app.setAvatarsVisible(false);
-  assert.equal(app.callLayout.classList.contains("avatars-hidden"), false);
-  assert.equal(app.elements.get("call-screen").classList.contains("avatars-hidden"), true);
-  assert.equal(app.elements.get("show-avatars").checked, false);
-  assert.equal(app.savedValues.get("webrtc-call-show-avatars-v1"), "false");
-  app.setAvatarsVisible(true);
-  assert.equal(app.elements.get("call-screen").classList.contains("avatars-hidden"), false);
+  const visibleNameRow = app.createParticipantRow("visible-peer", "Alice");
+  app.setPseudonymsVisible(false);
+  assert.equal(app.elements.get("call-screen").classList.contains("pseudos-hidden"), true);
+  assert.equal(app.elements.get("show-pseudonyms").checked, false);
+  assert.equal(app.savedValues.get("webrtc-call-show-pseudonyms-v1"), "false");
+  assert.equal(
+    visibleNameRow.querySelector(".participant-name").textContent,
+    "Alice",
+    "hiding video-area pseudonyms must leave participant sidebar names intact"
+  );
+  app.setPseudonymsVisible(true);
+  assert.equal(app.elements.get("call-screen").classList.contains("pseudos-hidden"), false);
 
   assert.equal(await app.getLocalStream(), true, "microphone-only startup should succeed");
   assert.equal(app.mediaCalls.length, 1, "camera must not be requested during startup");

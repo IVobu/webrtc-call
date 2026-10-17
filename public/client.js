@@ -22,7 +22,7 @@ const participantsResizer = document.getElementById("participants-resizer");
 const settingsResizer = document.getElementById("settings-resizer");
 const participantsDockBtn = document.getElementById("participants-dock-btn");
 const settingsDockBtn = document.getElementById("settings-dock-btn");
-const showAvatarsInput = document.getElementById("show-avatars");
+const showPseudonymsInput = document.getElementById("show-pseudonyms");
 const localVideo = document.getElementById("local-video");
 const localShares = document.getElementById("local-shares");
 const localAvatar = document.getElementById("local-avatar");
@@ -106,8 +106,7 @@ const MAX_AVATAR_FILE_BYTES = 250 * 1024;
 const AVATAR_STORAGE_KEY = "webrtc-call-avatar-v1";
 const NAME_STORAGE_KEY = "webrtc-call-name-v1";
 const LAYOUT_STORAGE_KEY = "webrtc-call-layout-v1";
-const AVATARS_STORAGE_KEY = "webrtc-call-show-avatars-v1";
-const LEGACY_PSEUDONYMS_STORAGE_KEY = "webrtc-call-show-pseudonyms-v1";
+const PSEUDONYMS_STORAGE_KEY = "webrtc-call-show-pseudonyms-v1";
 const DEFAULT_LAYOUT = { participantsWidth: 220, settingsWidth: 260, participantsDocked: false, settingsDocked: false };
 let layoutPreferences = { ...DEFAULT_LAYOUT };
 const allowedAvatarTypes = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
@@ -591,27 +590,26 @@ function resizePanelFromKeyboard(event, panelName) {
   saveLayoutPreferences();
 }
 
-function setAvatarsVisible(visible, persist = true) {
-  showAvatarsInput.checked = visible;
-  callScreen.classList.toggle("avatars-hidden", !visible);
+function setPseudonymsVisible(visible, persist = true) {
+  showPseudonymsInput.checked = visible;
+  callScreen.classList.toggle("pseudos-hidden", !visible);
   if (!persist) return;
   try {
-    localStorage.setItem(AVATARS_STORAGE_KEY, String(visible));
+    localStorage.setItem(PSEUDONYMS_STORAGE_KEY, String(visible));
   } catch (error) {
-    console.error("Impossible d'enregistrer la préférence d'affichage des avatars:", error);
+    console.error("Impossible d'enregistrer la préférence d'affichage des pseudos:", error);
   }
 }
 
-function loadAvatarVisibilityPreference() {
+function loadPseudonymPreference() {
   let visible = true;
   try {
-    const stored = localStorage.getItem(AVATARS_STORAGE_KEY) ||
-      localStorage.getItem(LEGACY_PSEUDONYMS_STORAGE_KEY);
+    const stored = localStorage.getItem(PSEUDONYMS_STORAGE_KEY);
     if (stored === "false") visible = false;
   } catch (error) {
-    console.error("Impossible de lire la préférence d'affichage des avatars:", error);
+    console.error("Impossible de lire la préférence d'affichage des pseudos:", error);
   }
-  setAvatarsVisible(visible, false);
+  setPseudonymsVisible(visible, false);
 }
 
 function isAudioFilterSupported(key) {
@@ -1865,8 +1863,8 @@ copyOverlayLinkBtn.addEventListener("click", () => {
 });
 
 nameInput.addEventListener("input", saveName);
-showAvatarsInput.addEventListener("change", () =>
-  setAvatarsVisible(showAvatarsInput.checked)
+showPseudonymsInput.addEventListener("change", () =>
+  setPseudonymsVisible(showPseudonymsInput.checked)
 );
 participantsDockBtn.addEventListener("click", () => {
   layoutPreferences.participantsDocked = !layoutPreferences.participantsDocked;
@@ -1914,6 +1912,6 @@ refreshAudioFilterControls();
 loadAvatarProfile();
 loadName();
 loadLayoutPreferences();
-loadAvatarVisibilityPreference();
+loadPseudonymPreference();
 joinCodeInput.value = getRoomCodeFromHash();
 refreshScreenShareStatus();
