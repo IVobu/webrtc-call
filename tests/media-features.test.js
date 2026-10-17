@@ -180,7 +180,6 @@ function createClient() {
   document.getElementById("camera-device-select").value = "__default__";
   document.getElementById("screen-resolution").value = "540";
   document.getElementById("screen-frame-rate").value = "15";
-  document.getElementById("screen-share-audio").checked = false;
 
   const mediaCalls = [];
   let displayCalls = 0;
@@ -315,7 +314,7 @@ function createClient() {
       makeRoomLink, makeOverlayLink, clearRoomCodeFromAddress, saveName,
       loadName, NAME_STORAGE_KEY, remoteAudio, participantRows,
       loadLayoutPreferences, saveLayoutPreferences, applyLayoutPreferences,
-      setPseudonymsVisible, layoutPreferences: () => layoutPreferences,
+      setAvatarsVisible, layoutPreferences: () => layoutPreferences,
       resizePanelFromKeyboard, callLayout
     };`, context);
   return Object.assign(context.testApi, {
@@ -366,21 +365,40 @@ function createOverlay(hash) {
 async function run() {
   const app = createClient();
   const markup = fs.readFileSync("public/index.html", "utf8");
+  const clientSource = fs.readFileSync("public/client.js", "utf8");
   const styles = fs.readFileSync("public/style.css", "utf8");
   assert(markup.indexOf("participants-sidebar") < markup.indexOf("class=\"call-main\""));
   assert(markup.indexOf("class=\"call-main\"") < markup.indexOf("class=\"call-settings\""));
-  assert(markup.indexOf("id=\"local-tile\"") < markup.indexOf("id=\"video-grid\""));
   assert(markup.indexOf("id=\"video-grid\"") < markup.indexOf("id=\"avatar-strip\""));
-  assert.match(markup, /id="mic-btn"[^>]*>Micro<\/button>/);
-  assert.match(markup, /id="cam-btn"[^>]*>Caméra<\/button>/);
-  assert.match(markup, /id="screen-btn"[^>]*>Screenshare<\/button>/);
+  assert(markup.indexOf("id=\"video-grid\"") < markup.indexOf("id=\"local-tile\""));
+  assert.match(styles, /\.screen-share-panel\s*\{[^}]*grid-row:\s*1/s);
+  assert.match(styles, /\.avatar-panel\s*\{[^}]*grid-row:\s*2/s);
+  assert.match(markup, /<details class="room-menu">[\s\S]*?id="room-label"[\s\S]*?id="copy-link-btn"[\s\S]*?id="copy-code-btn"[\s\S]*?id="copy-overlay-link-btn"[\s\S]*?id="leave-btn"[\s\S]*?<\/details>/);
+  assert.doesNotMatch(markup, /class="call-header"/);
+  assert.match(markup, /id="mic-btn"[^>]*aria-label="Couper le micro"[^>]*>[\s\S]*?<svg/);
+  assert.match(markup, /id="cam-btn"[^>]*aria-label="Activer la caméra"[^>]*>[\s\S]*?<svg/);
+  assert.match(markup, /id="screen-btn"[^>]*aria-label="Partager un écran ou une fenêtre"[^>]*>[\s\S]*?<svg/);
   assert.doesNotMatch(markup, /privacy-mode|Masquer les noms/);
-  assert.match(markup, /id="show-pseudonyms"[^>]*checked/);
+  assert.match(markup, /id="show-avatars"[^>]*checked/);
+  assert.match(markup, /<details class="settings-panel call-avatar-settings">[\s\S]*?id="call-avatar-idle-input"[^>]*accept="image\/png,image\/jpeg,image\/gif,image\/webp"[\s\S]*?id="call-avatar-talking-input"[^>]*accept="image\/png,image\/jpeg,image\/gif,image\/webp"[\s\S]*?id="call-avatar-idle-preview"[\s\S]*?id="call-avatar-talking-preview"[\s\S]*?id="call-avatar-status"[\s\S]*?<\/details>/);
+  assert.match(markup, /PNG, JPEG, GIF ou WebP \(250 Ko maximum\)[\s\S]*?remplace uniquement l'image du mode choisi/);
   assert.match(markup, /participants-resizer/);
   assert.match(markup, /settings-resizer/);
   assert.match(styles, /\.participant-overlay-menu/);
-  assert.match(markup, /id="screen-share-audio"/);
+  assert.match(styles, /\.room-menu-content/);
+  assert.match(styles, /\.ctrl-btn svg/);
+  assert.match(styles, /#local-tile \.video-label\s*\{[^}]*top:\s*8px[^}]*bottom:\s*auto/s);
+  const audioOptionIndex = markup.indexOf("Audio du partage d'écran activé par défaut");
+  const settingsIndex = markup.indexOf("class=\"call-settings\"");
+  const firstSettingsDetailsIndex = markup.indexOf("<details class=\"settings-panel screen-settings\">", settingsIndex);
+  assert(audioOptionIndex > settingsIndex && audioOptionIndex < firstSettingsDetailsIndex,
+    "screen-share audio status must remain visible outside collapsible settings");
+  assert.doesNotMatch(markup, /id="screen-share-audio"/, "audio capture should not have an opt-out toggle");
+  assert.match(markup, /Certains navigateurs ou sources ne fournissent pas de piste audio/);
+  assert.match(clientSource, /getDisplayMedia\(\{[\s\S]*?audio:\s*true/);
   assert.match(styles, /\.share-audio-controls/);
+  assert.match(styles, /\.avatars-hidden \.avatar-view,\s*\.avatars-hidden \.avatar-fallback/);
+  assert.doesNotMatch(styles, /\.avatars-hidden[^}]*participant-name/);
   assert.match(styles, /#call-screen\s*\{[^}]*height:\s*100vh/s);
   assert.match(styles, /grid-template-areas:\s*"participants participants-resizer main settings-resizer settings"/);
   assert.match(styles, /\.share-tile,\s*\.local-share-tile\s*\{[^}]*resize:\s*both/s);
@@ -439,13 +457,13 @@ async function run() {
   app.applyLayoutPreferences();
   assert.equal(app.callLayout.classList.contains("settings-docked"), true);
   assert.equal(app.callLayout.style.values["--settings-width"], "54px");
-  app.setPseudonymsVisible(false);
-  assert.equal(app.callLayout.classList.contains("pseudos-hidden"), false);
-  assert.equal(app.elements.get("call-screen").classList.contains("pseudos-hidden"), true);
-  assert.equal(app.elements.get("show-pseudonyms").checked, false);
-  assert.equal(app.savedValues.get("webrtc-call-show-pseudonyms-v1"), "false");
-  app.setPseudonymsVisible(true);
-  assert.equal(app.elements.get("call-screen").classList.contains("pseudos-hidden"), false);
+  app.setAvatarsVisible(false);
+  assert.equal(app.callLayout.classList.contains("avatars-hidden"), false);
+  assert.equal(app.elements.get("call-screen").classList.contains("avatars-hidden"), true);
+  assert.equal(app.elements.get("show-avatars").checked, false);
+  assert.equal(app.savedValues.get("webrtc-call-show-avatars-v1"), "false");
+  app.setAvatarsVisible(true);
+  assert.equal(app.elements.get("call-screen").classList.contains("avatars-hidden"), false);
 
   assert.equal(await app.getLocalStream(), true, "microphone-only startup should succeed");
   assert.equal(app.mediaCalls.length, 1, "camera must not be requested during startup");
@@ -517,12 +535,11 @@ async function run() {
   await app.startScreenShare();
   assert.equal(app.shareSources.size, 1);
   assert.equal(app.getDisplayCalls(), 1);
-  assert.equal(app.displayRequests[0].audio, false, "screen audio capture should be off by default");
-  app.elements.get("screen-share-audio").checked = true;
+  assert.equal(app.displayRequests[0].audio, true, "screen audio capture should be requested by default");
   app.setDisplayAudioAvailable(true);
   await app.startScreenShare();
   assert.equal(app.getDisplayCalls(), 2);
-  assert.equal(app.displayRequests[1].audio, true, "audio must be explicitly requested for the selected capture");
+  assert.equal(app.displayRequests[1].audio, true, "audio should be requested for each selected capture");
   assert.equal(app.shareSources.size, 2, "two independent sources should be active");
   await app.startScreenShare();
   assert.equal(app.getDisplayCalls(), 2, "the simultaneous share limit must prevent a third capture");
@@ -611,14 +628,7 @@ async function run() {
   app.handleSignal("peer", { type: "avatar-state", speaking: false });
   assert.equal(peerTile.querySelector(".avatar-view").classList.contains("avatar-bounce"), false);
   assert.equal(peerTile.querySelector(".avatar-view").classList.contains("avatar-idle-dim"), true);
-  const shareVideoTrack = new MediaTrack("video", "remote-share");
-  const shareSender = app.shareSenders.get("peer")[sources[1].slot];
-  app.peers.get("peer").ontrack({
-    track: shareVideoTrack,
-    streams: [],
-    transceiver: { sender: shareSender },
-  });
-  assert.equal(app.remoteVideos.get("peer").has(`share-${sources[1].slot}`), true);
+  assert.equal(app.remoteVideos.get("peer").has(`share-${sources[1].slot}`), false);
   const remoteShareAudioTrack = new MediaTrack("audio", "remote-share-audio");
   app.peers.get("peer").ontrack({
     track: remoteShareAudioTrack,
@@ -627,6 +637,22 @@ async function run() {
   });
   const remoteShareAudio = app.remoteShareAudio.get("peer").get(sources[1].slot);
   assert.equal(remoteShareAudio.audio.srcObject.getAudioTracks()[0], remoteShareAudioTrack);
+  assert.equal(remoteShareAudio.controls, null, "audio arriving first should wait for its matching share tile");
+  const shareVideoTrack = new MediaTrack("video", "remote-share");
+  const shareSender = app.shareSenders.get("peer")[sources[1].slot];
+  app.peers.get("peer").ontrack({
+    track: shareVideoTrack,
+    streams: [],
+    transceiver: { sender: shareSender },
+  });
+  assert.equal(app.remoteVideos.get("peer").has(`share-${sources[1].slot}`), true);
+  assert.equal(
+    remoteShareAudio.controls.closest(".share-tile"),
+    app.remoteVideos.get("peer").get(`share-${sources[1].slot}`).closest(".share-tile"),
+    "the share volume control should be rendered inside its matching video tile"
+  );
+  assert.equal(remoteShareAudio.controls.dataset.peerId, "peer");
+  assert.equal(remoteShareAudio.controls.dataset.shareSlot, String(sources[1].slot));
   const shareVolume = remoteShareAudio.controls.children.find((child) => child.type === "range");
   shareVolume.value = "0.4";
   shareVolume.listeners.input[0]();
@@ -700,6 +726,35 @@ async function run() {
     app.localAvatarProfile.idle,
     "data:image/gif;base64,R0lGODlh",
     app.elements.get("avatar-status").textContent
+  );
+  assert.equal(
+    app.elements.get("call-avatar-idle-preview").src,
+    "data:image/gif;base64,R0lGODlh",
+    "home avatar imports should update the in-call settings preview"
+  );
+  const callTalkingInput = app.elements.get("call-avatar-talking-input");
+  callTalkingInput.files = [{
+    type: "image/gif",
+    size: 50,
+    arrayBuffer: async () => Uint8Array.from([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]).buffer,
+  }];
+  await callTalkingInput.listeners.change[0]();
+  assert.equal(app.localAvatarProfile.talking, "data:image/gif;base64,R0lGODlh");
+  assert.equal(app.elements.get("avatar-talking-preview").src, "data:image/gif;base64,R0lGODlh");
+  assert.match(app.elements.get("call-avatar-status").textContent, /chargé/);
+  assert.equal(JSON.parse(app.savedValues.get("webrtc-call-avatar-v1")).talking, "data:image/gif;base64,R0lGODlh");
+  assert(
+    app.emitted.some(({ name, payload }) =>
+      name === "signal" && payload.data.type === "avatar-profile" &&
+      payload.data.talking === "data:image/gif;base64,R0lGODlh"
+    ),
+    "avatar imports in call settings should propagate to peers"
+  );
+  app.loadAvatarProfile();
+  assert.equal(
+    app.elements.get("call-avatar-talking-preview").src,
+    "data:image/gif;base64,R0lGODlh",
+    "saved avatar imports should return to the settings preview after reload"
   );
   assert.equal(
     app.isValidAvatarDataUrl("data:image/gif;base64,R0lGODlh"),

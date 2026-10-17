@@ -481,6 +481,8 @@ input:focus {
 
 .participants-sidebar {
   grid-area: participants;
+  display: flex;
+  flex-direction: column;
 }
 
 .call-main {
@@ -555,6 +557,7 @@ input:focus {
 .participants-docked .participants-sidebar .dock-panel-heading h2,
 .settings-docked .call-settings .dock-panel-heading h2,
 .participants-docked .participants-list,
+.participants-docked .room-menu,
 .settings-docked .call-settings > :not(.dock-panel-heading) {
   display: none;
 }
@@ -575,12 +578,53 @@ input:focus {
 }
 
 .participants-list {
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: calc(100% - 32px);
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+.room-menu {
+  flex: 0 0 auto;
+  margin: 0 0 8px;
+  border: 1px solid #233554;
+  border-radius: 7px;
+  background: #0a192f;
+}
+
+.room-menu summary {
+  padding: 8px;
+  color: #dbe8ff;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.room-menu[open] summary {
+  border-bottom: 1px solid #233554;
+}
+
+.room-menu-content {
+  padding: 8px;
+}
+
+.room-menu-content #room-label {
+  margin-bottom: 8px;
+  color: #00d4ff;
+  font-size: 0.8rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.room-menu-content .btn-small {
+  display: block;
+  width: 100%;
+  margin: 6px 0 0;
+  padding: 7px;
+  font-size: 0.75rem;
 }
 
 .participant-row {
@@ -660,34 +704,12 @@ input:focus {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: 10px;
 }
 
-.local-identity-panel {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-  padding: 8px;
-  border: 1px solid #233554;
-  border-radius: 10px;
-  background: #101b30;
-}
-
-.local-identity-panel h2 {
-  flex: 0 0 auto;
-}
-
-.local-identity-panel .avatar-tile {
-  flex: 0 1 220px;
-  width: 220px;
-  height: 120px;
-  aspect-ratio: auto;
-}
-
 .screen-share-panel {
-  grid-row: 2;
+  grid-row: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -785,17 +807,23 @@ input:focus {
 .share-audio-controls {
   position: absolute;
   z-index: 3;
+  left: 8px;
   right: 8px;
   bottom: 8px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  max-width: calc(100% - 16px);
+  gap: 5px;
   padding: 5px 7px;
   border-radius: 6px;
   background: rgba(0, 0, 0, 0.76);
   color: #fff;
   font-size: 0.72rem;
+}
+
+.share-audio-controls label,
+.share-audio-controls button {
+  flex: 0 0 auto;
 }
 
 .share-audio-controls button {
@@ -809,7 +837,11 @@ input:focus {
 }
 
 .share-audio-controls input[type="range"] {
-  width: 90px;
+  flex: 1 1 68px;
+  width: auto;
+  min-width: 58px;
+  max-width: 100%;
+  margin: 0;
   padding: 0;
 }
 
@@ -833,9 +865,9 @@ input:focus {
 }
 
 .avatar-panel {
-  grid-row: 3;
+  grid-row: 2;
   overflow: hidden;
-  min-height: 130px;
+  min-height: 110px;
 }
 
 .avatar-strip {
@@ -862,6 +894,11 @@ input:focus {
   z-index: 2;
 }
 
+#local-tile .video-label {
+  top: 8px;
+  bottom: auto;
+}
+
 .avatar-strip .video-controls {
   left: 5px;
   right: 5px;
@@ -870,8 +907,19 @@ input:focus {
 }
 
 .avatar-strip .ctrl-btn {
-  padding: 5px 7px;
-  font-size: 0.68rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 5px;
+}
+
+.ctrl-btn svg {
+  display: block;
+  width: 17px;
+  height: 17px;
+  fill: currentColor;
 }
 
 .call-settings .settings-panel {
@@ -889,9 +937,26 @@ input:focus {
   background: #16213e;
 }
 
-.pseudos-hidden .video-label,
-.pseudos-hidden .share-label,
-.pseudos-hidden .participant-name {
+.screen-audio-option {
+  margin: 0 0 8px;
+  padding: 8px;
+  border: 1px solid #344765;
+  border-radius: 6px;
+  background: #16213e;
+}
+
+.screen-audio-option strong {
+  display: block;
+  color: #dbe8ff;
+  font-size: 0.82rem;
+}
+
+.screen-audio-option .settings-status {
+  margin-top: 5px;
+}
+
+.avatars-hidden .avatar-view,
+.avatars-hidden .avatar-fallback {
   visibility: hidden;
 }
 
@@ -954,20 +1019,7 @@ input:focus {
 
   .call-main {
     min-height: 555px;
-    grid-template-rows: auto minmax(150px, 1fr) auto;
-  }
-
-  .call-header {
-    padding: 8px;
-  }
-
-  .call-actions {
-    justify-content: flex-start;
-  }
-
-  .call-actions .btn-small {
-    padding: 6px 8px;
-    font-size: 0.75rem;
+    grid-template-rows: auto minmax(180px, 1fr);
   }
 
   .screen-share-panel {
@@ -1000,10 +1052,6 @@ input:focus {
 @media (max-width: 600px) {
   .video-grid {
     grid-template-columns: 1fr;
-  }
-
-  .call-header {
-    flex-wrap: wrap;
   }
 
   .screen-settings-controls {

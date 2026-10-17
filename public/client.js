@@ -22,7 +22,7 @@ const participantsResizer = document.getElementById("participants-resizer");
 const settingsResizer = document.getElementById("settings-resizer");
 const participantsDockBtn = document.getElementById("participants-dock-btn");
 const settingsDockBtn = document.getElementById("settings-dock-btn");
-const showPseudonymsInput = document.getElementById("show-pseudonyms");
+const showAvatarsInput = document.getElementById("show-avatars");
 const localVideo = document.getElementById("local-video");
 const localShares = document.getElementById("local-shares");
 const localAvatar = document.getElementById("local-avatar");
@@ -32,6 +32,11 @@ const avatarTalkingInput = document.getElementById("avatar-talking-input");
 const avatarIdlePreview = document.getElementById("avatar-idle-preview");
 const avatarTalkingPreview = document.getElementById("avatar-talking-preview");
 const avatarStatus = document.getElementById("avatar-status");
+const callAvatarIdleInput = document.getElementById("call-avatar-idle-input");
+const callAvatarTalkingInput = document.getElementById("call-avatar-talking-input");
+const callAvatarIdlePreview = document.getElementById("call-avatar-idle-preview");
+const callAvatarTalkingPreview = document.getElementById("call-avatar-talking-preview");
+const callAvatarStatus = document.getElementById("call-avatar-status");
 const avatarBounceInput = document.getElementById("avatar-bounce");
 const avatarDimIdleInput = document.getElementById("avatar-dim-idle");
 const localLabel = document.getElementById("local-label");
@@ -49,7 +54,6 @@ const audioFilterControls = [
 ];
 const screenResolutionInput = document.getElementById("screen-resolution");
 const screenFrameRateInput = document.getElementById("screen-frame-rate");
-const screenShareAudioInput = document.getElementById("screen-share-audio");
 const screenShareStatus = document.getElementById("screen-share-status");
 
 const supportedAudioConstraints = navigator.mediaDevices &&
@@ -102,7 +106,8 @@ const MAX_AVATAR_FILE_BYTES = 250 * 1024;
 const AVATAR_STORAGE_KEY = "webrtc-call-avatar-v1";
 const NAME_STORAGE_KEY = "webrtc-call-name-v1";
 const LAYOUT_STORAGE_KEY = "webrtc-call-layout-v1";
-const PSEUDONYMS_STORAGE_KEY = "webrtc-call-show-pseudonyms-v1";
+const AVATARS_STORAGE_KEY = "webrtc-call-show-avatars-v1";
+const LEGACY_PSEUDONYMS_STORAGE_KEY = "webrtc-call-show-pseudonyms-v1";
 const DEFAULT_LAYOUT = { participantsWidth: 220, settingsWidth: 260, participantsDocked: false, settingsDocked: false };
 let layoutPreferences = { ...DEFAULT_LAYOUT };
 const allowedAvatarTypes = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
@@ -322,19 +327,19 @@ async function startVoiceDetection(track) {
 }
 
 function renderAvatarPreviews() {
-  if (localAvatarProfile.idle) {
-    avatarIdlePreview.src = localAvatarProfile.idle;
-    avatarIdlePreview.classList.remove("hidden");
-  } else {
-    avatarIdlePreview.removeAttribute("src");
-    avatarIdlePreview.classList.add("hidden");
-  }
-  if (localAvatarProfile.talking) {
-    avatarTalkingPreview.src = localAvatarProfile.talking;
-    avatarTalkingPreview.classList.remove("hidden");
-  } else {
-    avatarTalkingPreview.removeAttribute("src");
-    avatarTalkingPreview.classList.add("hidden");
+  for (const [preview, source] of [
+    [avatarIdlePreview, localAvatarProfile.idle],
+    [callAvatarIdlePreview, localAvatarProfile.idle],
+    [avatarTalkingPreview, localAvatarProfile.talking],
+    [callAvatarTalkingPreview, localAvatarProfile.talking],
+  ]) {
+    if (source) {
+      preview.src = source;
+      preview.classList.remove("hidden");
+    } else {
+      preview.removeAttribute("src");
+      preview.classList.add("hidden");
+    }
   }
   updateLocalAvatar();
 }
@@ -370,11 +375,11 @@ function saveAvatarPreferences() {
   sendAvatarProfile();
 }
 
-async function importAvatar(input, profileKey, preview) {
+async function importAvatar(input, profileKey, preview, statusElement = avatarStatus) {
   const file = input.files && input.files[0];
   if (!file) return;
   if (!allowedAvatarTypes.has(file.type) || file.size > MAX_AVATAR_FILE_BYTES) {
-    avatarStatus.textContent = "Choisis un PNG, JPEG, GIF ou WebP de 250 Ko maximum. Les SVG et autres formats ne sont pas acceptés.";
+    statusElement.textContent = "Choisis un PNG, JPEG, GIF ou WebP de 250 Ko maximum. Les SVG et autres formats ne sont pas acceptés.";
     input.value = "";
     return;
   }
@@ -398,20 +403,23 @@ async function importAvatar(input, profileKey, preview) {
     preview.src = dataUrl;
     preview.classList.remove("hidden");
     renderAvatarPreviews();
+    let saved = true;
     try {
       localStorage.setItem(AVATAR_STORAGE_KEY, JSON.stringify(localAvatarProfile));
     } catch (storageError) {
       console.error("Impossible de sauvegarder les avatars localement:", storageError);
-      avatarStatus.textContent = "Avatar chargé pour cet appel, mais impossible à enregistrer sur cet appareil.";
+      saved = false;
     }
-    avatarStatus.textContent = peers.size
-      ? "Avatar chargé et partagé avec les participants de l'appel."
-      : "Avatar chargé. Il sera partagé au début de l'appel.";
+    statusElement.textContent = !saved
+      ? "Avatar chargé pour cet appel, mais impossible à enregistrer sur cet appareil."
+      : peers.size
+        ? "Avatar chargé et partagé avec les participants de l'appel."
+        : "Avatar chargé. Il sera partagé au début de l'appel.";
     sendAvatarProfile();
     input.value = "";
   } catch (error) {
     console.error("Erreur d'import de l'avatar:", error);
-    avatarStatus.textContent = "Fichier image invalide ou illisible. Essaie un PNG, JPEG, GIF ou WebP exporté.";
+    statusElement.textContent = "Fichier image invalide ou illisible. Essaie un PNG, JPEG, GIF ou WebP exporté.";
   }
 }
 
@@ -583,26 +591,27 @@ function resizePanelFromKeyboard(event, panelName) {
   saveLayoutPreferences();
 }
 
-function setPseudonymsVisible(visible, persist = true) {
-  showPseudonymsInput.checked = visible;
-  callScreen.classList.toggle("pseudos-hidden", !visible);
+function setAvatarsVisible(visible, persist = true) {
+  showAvatarsInput.checked = visible;
+  callScreen.classList.toggle("avatars-hidden", !visible);
   if (!persist) return;
   try {
-    localStorage.setItem(PSEUDONYMS_STORAGE_KEY, String(visible));
+    localStorage.setItem(AVATARS_STORAGE_KEY, String(visible));
   } catch (error) {
-    console.error("Impossible d'enregistrer la préférence d'affichage des pseudos:", error);
+    console.error("Impossible d'enregistrer la préférence d'affichage des avatars:", error);
   }
 }
 
-function loadPseudonymPreference() {
+function loadAvatarVisibilityPreference() {
   let visible = true;
   try {
-    const stored = localStorage.getItem(PSEUDONYMS_STORAGE_KEY);
+    const stored = localStorage.getItem(AVATARS_STORAGE_KEY) ||
+      localStorage.getItem(LEGACY_PSEUDONYMS_STORAGE_KEY);
     if (stored === "false") visible = false;
   } catch (error) {
-    console.error("Impossible de lire la préférence d'affichage des pseudos:", error);
+    console.error("Impossible de lire la préférence d'affichage des avatars:", error);
   }
-  setPseudonymsVisible(visible, false);
+  setAvatarsVisible(visible, false);
 }
 
 function isAudioFilterSupported(key) {
@@ -859,15 +868,19 @@ async function getLocalStream() {
 function updateControls() {
   micBtn.classList.toggle("active", micEnabled);
   micBtn.classList.toggle("danger", !micEnabled);
-  micBtn.textContent = "Micro";
   micBtn.title = micEnabled ? "Couper le micro" : "Activer le micro";
+  micBtn.setAttribute("aria-label", micBtn.title);
+  micBtn.setAttribute("aria-pressed", String(micEnabled));
   camBtn.classList.toggle("active", camEnabled);
   camBtn.classList.toggle("danger", !camEnabled);
-  camBtn.textContent = "Caméra";
   camBtn.title = camEnabled ? "Désactiver la caméra" : "Activer la caméra";
+  camBtn.setAttribute("aria-label", camBtn.title);
   camBtn.setAttribute("aria-pressed", String(camEnabled));
   screenBtn.classList.toggle("active", isScreenSharing);
   screenBtn.classList.toggle("danger", isScreenSharing);
+  screenBtn.title = isScreenSharing ? "Arrêter le partage d'écran" : "Partager un écran ou une fenêtre";
+  screenBtn.setAttribute("aria-label", screenBtn.title);
+  screenBtn.setAttribute("aria-pressed", String(isScreenSharing));
   localVideo.classList.toggle("hidden", !camEnabled);
   updateLocalAvatar();
 }
@@ -1032,18 +1045,28 @@ function ensureRemoteShareAudioControls(peerId, slot, tile) {
   if (!shareAudio || shareAudio.controls) return;
   const controls = document.createElement("div");
   controls.className = "share-audio-controls";
+  controls.dataset.peerId = peerId;
+  controls.dataset.shareSlot = String(slot);
+  controls.setAttribute("aria-label", `Commandes audio du partage ${slot + 1}`);
   const label = document.createElement("label");
-  label.textContent = "Audio";
+  label.textContent = `Son ${slot + 1}`;
+  label.setAttribute("for", `share-audio-volume-${peerId}-${slot}`);
   const muteButton = document.createElement("button");
   muteButton.type = "button";
   muteButton.textContent = "Couper";
+  muteButton.setAttribute("aria-label", `Couper l'audio du partage ${slot + 1}`);
   muteButton.setAttribute("aria-pressed", "false");
   muteButton.addEventListener("click", () => {
     shareAudio.audio.muted = !shareAudio.audio.muted;
     muteButton.textContent = shareAudio.audio.muted ? "Réactiver" : "Couper";
+    muteButton.setAttribute(
+      "aria-label",
+      `${shareAudio.audio.muted ? "Réactiver" : "Couper"} l'audio du partage ${slot + 1}`
+    );
     muteButton.setAttribute("aria-pressed", String(shareAudio.audio.muted));
   });
   const volume = document.createElement("input");
+  volume.id = `share-audio-volume-${peerId}-${slot}`;
   volume.type = "range";
   volume.min = "0";
   volume.max = "1";
@@ -1496,11 +1519,10 @@ async function startScreenShare() {
   let capturedStream = null;
   let source = null;
   let senderCleanupFailed = false;
-  const audioRequested = screenShareAudioInput.checked;
   try {
     const stream = await navigator.mediaDevices.getDisplayMedia({
       video: { ...getScreenTrackConstraints(), cursor: "always" },
-      audio: audioRequested,
+      audio: true,
     });
     capturedStream = stream;
 
@@ -1561,7 +1583,7 @@ async function startScreenShare() {
     );
 
     isScreenSharing = true;
-    screenShareNotice = audioRequested && !audioTrack
+    screenShareNotice = !audioTrack
       ? "Vidéo partagée, mais ce navigateur n'a fourni aucun audio système."
       : audioTrack
         ? "Audio système transmis pour ce partage."
@@ -1611,9 +1633,7 @@ async function startScreenShare() {
     }
     if (capturedStream) capturedStream.getTracks().forEach((track) => track.stop());
     console.error("Erreur partage ecran:", err);
-    screenShareNotice = audioRequested
-      ? `Capture impossible avec l'audio demandé (${err.message}). Désactive l'audio ou utilise un navigateur qui le prend en charge.`
-      : `Partage impossible : ${err.message}`;
+    screenShareNotice = `Capture avec audio impossible (${err.message}). Vérifie l'autorisation audio dans le sélecteur du navigateur et réessaie.`;
     if (senderCleanupFailed) {
       screenShareNotice += " Une piste distante peut nécessiter un nouvel essai.";
     }
@@ -1815,6 +1835,12 @@ avatarIdleInput.addEventListener("change", () =>
 avatarTalkingInput.addEventListener("change", () =>
   importAvatar(avatarTalkingInput, "talking", avatarTalkingPreview)
 );
+callAvatarIdleInput.addEventListener("change", () =>
+  importAvatar(callAvatarIdleInput, "idle", callAvatarIdlePreview, callAvatarStatus)
+);
+callAvatarTalkingInput.addEventListener("change", () =>
+  importAvatar(callAvatarTalkingInput, "talking", callAvatarTalkingPreview, callAvatarStatus)
+);
 avatarBounceInput.addEventListener("change", saveAvatarPreferences);
 avatarDimIdleInput.addEventListener("change", saveAvatarPreferences);
 if (navigator.mediaDevices && typeof navigator.mediaDevices.addEventListener === "function") {
@@ -1839,8 +1865,8 @@ copyOverlayLinkBtn.addEventListener("click", () => {
 });
 
 nameInput.addEventListener("input", saveName);
-showPseudonymsInput.addEventListener("change", () =>
-  setPseudonymsVisible(showPseudonymsInput.checked)
+showAvatarsInput.addEventListener("change", () =>
+  setAvatarsVisible(showAvatarsInput.checked)
 );
 participantsDockBtn.addEventListener("click", () => {
   layoutPreferences.participantsDocked = !layoutPreferences.participantsDocked;
@@ -1888,6 +1914,6 @@ refreshAudioFilterControls();
 loadAvatarProfile();
 loadName();
 loadLayoutPreferences();
-loadPseudonymPreference();
+loadAvatarVisibilityPreference();
 joinCodeInput.value = getRoomCodeFromHash();
 refreshScreenShareStatus();
