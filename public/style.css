@@ -510,6 +510,8 @@ body { align-items: stretch; justify-content: stretch; }
 .screen-share-controls input[type="range"] { flex:1; min-width:40px; accent-color:#00d4ff; }
 .screen-share-stop { border:1px solid #713d4a; border-radius:7px; background:#4a202e; color:#ffe8eb; padding:6px 9px; cursor:pointer; }
 .screen-share-stop:hover { background:#682b3c; }
+.screen-share-mute { flex:0 0 auto; border:1px solid rgba(0,212,255,.35); border-radius:7px; background:#17334a; color:#e5f8ff; padding:6px 9px; cursor:pointer; white-space:nowrap; font-size:.75rem; }
+.screen-share-mute:hover { background:#214a66; }
 
 
 /* Screen-share tiles can be resized and reordered */
