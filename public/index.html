@@ -48,15 +48,71 @@
 </div>
 
 <div id="call-screen" class="screen hidden">
-  <div class="call-header">
-    <span id="room-label">Salle: </span>
+  <header class="call-header">
+    <button id="panel-toggle" class="icon-btn" title="Afficher ou masquer le panneau" aria-label="Afficher ou masquer le panneau">☰</button>
+    <span class="app-title">WebRTC Call</span>
     <button id="audio-unlock" class="btn btn-small btn-primary hidden" title="Le navigateur a bloqué le son">Activer le son</button>
-    <button id="settings-btn" class="btn btn-small" title="Réglages">Réglages</button>
-    <button id="chat-btn" class="btn btn-small" title="Chat">Chat <span id="chat-badge" class="badge hidden">0</span></button>
-    <button id="copy-link-btn" class="btn btn-small">Copier le lien</button>
-    <button id="leave-btn" class="btn btn-small btn-danger">Quitter</button>
-  </div>
+    <button id="settings-btn" class="icon-btn" title="Réglages avancés" aria-label="Réglages avancés">⚙</button>
+    <button id="chat-btn" class="icon-btn" title="Chat" aria-label="Chat">💬 <span id="chat-badge" class="badge hidden">0</span></button>
+    <button id="copy-link-btn" class="icon-btn" title="Copier le lien" aria-label="Copier le lien">🔗</button>
+    <button id="leave-btn" class="icon-btn danger-icon" title="Quitter l'appel" aria-label="Quitter l'appel">⏻</button>
+  </header>
 
+  <div class="call-workspace">
+    <main class="stage-column">
+      <div id="stage-heading" class="stage-heading">
+        <span>Partages d'écran</span>
+        <span class="stage-hint">Les écrans partagés apparaîtront ici</span>
+      </div>
+      <div id="video-grid" class="video-grid">
+        <div class="video-tile" id="local-tile">
+          <video id="local-video" class="cam-video" autoplay muted playsinline></video>
+          <img id="local-avatar" class="avatar-img hidden" alt="">
+          <span class="video-label" id="local-label">Toi</span>
+          <div class="video-controls">
+            <button id="mic-btn" class="ctrl-btn active" title="Micro" aria-label="Activer ou couper le micro">🎙</button>
+            <button id="cam-btn" class="ctrl-btn" title="Caméra (désactivée au départ)" aria-label="Activer ou couper la caméra">📷</button>
+            <button id="screen-btn" class="ctrl-btn" title="Partager l'écran" aria-label="Partager l'écran">🖥</button>
+          </div>
+        </div>
+      </div>
+      <div id="stage-empty" class="stage-empty">
+        <div class="stage-empty-icon">▣</div>
+        <strong>Aucun partage d'écran</strong>
+        <span>Utilise l'icône 🖥 pour commencer à partager.</span>
+      </div>
+      <div id="participants-bar" class="participants-bar">
+        <div class="participants-bar-heading">
+          <span id="participant-count">1 participant</span>
+          <span class="stage-hint">Participants du salon</span>
+        </div>
+        <div id="avatar-strip" class="avatar-strip"></div>
+      </div>
+    </main>
+
+    <aside id="right-panel" class="right-panel">
+      <div class="panel-title-row">
+        <h2>Salon</h2>
+        <button id="panel-close" class="icon-btn" title="Rétracter le panneau" aria-label="Rétracter le panneau">›</button>
+      </div>
+      <div class="room-info">
+        <span class="section-label">Code de la salle</span>
+        <strong id="room-label">Salle : —</strong>
+      </div>
+      <section class="panel-section">
+        <div class="section-heading"><h3>Participants</h3><span id="participant-count-side" class="section-count">1</span></div>
+        <div id="participants-list" class="participants-list"></div>
+      </section>
+      <section class="panel-section panel-options">
+        <h3>Affichage</h3>
+        <label class="setting-row compact-setting">
+          <input type="checkbox" id="show-names-toggle" checked>
+          <span>Afficher les pseudonymes</span>
+        </label>
+        <button id="settings-btn-secondary" class="btn btn-secondary btn-small">Réglages audio et avatar</button>
+      </section>
+    </aside>
+  </div>
 
   <aside id="chat-panel" class="chat-panel hidden">
     <div class="chat-header">
@@ -69,23 +125,6 @@
       <button id="chat-send" class="btn btn-primary btn-small">Envoyer</button>
     </div>
   </aside>
-
-  <div id="video-grid" class="video-grid">
-    <div class="video-tile" id="local-tile">
-      <video id="local-video" class="cam-video" autoplay muted playsinline></video>
-      <img id="local-avatar" class="avatar-img hidden" alt="">
-      <span class="video-label" id="local-label">Toi</span>
-      <div class="video-controls">
-        <button id="mic-btn" class="ctrl-btn active" title="Micro">Mic</button>
-        <button id="cam-btn" class="ctrl-btn active" title="Cam">Cam</button>
-        <button id="screen-btn" class="ctrl-btn" title="Partager l'ecran">Screen</button>
-      </div>
-    </div>
-  </div>
-
-  <div id="participants-bar" class="participants-bar">
-    <span id="participant-count"></span>
-  </div>
 </div>
 
 <div id="settings-modal" class="modal hidden">
