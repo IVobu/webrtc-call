@@ -41,6 +41,15 @@ const panelClose = $("panel-close");
 const rightPanel = $("right-panel");
 const stageEmpty = $("stage-empty");
 const settingsBtnSecondary = $("settings-btn-secondary");
+const renameInput = $("rename-input");
+const renameSave = $("rename-save");
+const echoCancelToggle = $("echo-cancel-toggle");
+const noiseSuppressionToggle = $("noise-suppression-toggle");
+const videoQualitySelect = $("video-quality-select");
+const videoFpsSelect = $("video-fps-select");
+const panelAvatarIdle = $("panel-avatar-idle");
+const panelAvatarTalking = $("panel-avatar-talking");
+const avatarSave = $("avatar-save");
 
 const settingsModal = $("settings-modal");
 const bounceEnabledInput = $("bounce-enabled");
@@ -72,6 +81,10 @@ const SETTINGS = {
   bounceEnabled: false,
   bounceIntensity: 1.15,
   speakingThreshold: 18,
+  echoCancellation: true,
+  noiseSuppression: true,
+  videoHeight: 720,
+  videoFps: 24,
 };
 
 let localStream = null;
@@ -161,6 +174,10 @@ function loadSettings() {
     }
     if (typeof saved.bounceIntensity === "number") SETTINGS.bounceIntensity = saved.bounceIntensity;
     if (typeof saved.speakingThreshold === "number") SETTINGS.speakingThreshold = saved.speakingThreshold;
+    if (typeof saved.echoCancellation === "boolean") SETTINGS.echoCancellation = saved.echoCancellation;
+    if (typeof saved.noiseSuppression === "boolean") SETTINGS.noiseSuppression = saved.noiseSuppression;
+    if ([360, 720, 1080].includes(Number(saved.videoHeight))) SETTINGS.videoHeight = Number(saved.videoHeight);
+    if ([10, 15, 24, 30].includes(Number(saved.videoFps))) SETTINGS.videoFps = Number(saved.videoFps);
   } catch (e) {
     console.error(e);
   }
@@ -175,6 +192,13 @@ function loadSettings() {
   bounceIntensityValue.textContent = SETTINGS.bounceIntensity.toFixed(2);
   speakingThresholdInput.value = SETTINGS.speakingThreshold;
   speakingThresholdValue.textContent = SETTINGS.speakingThreshold;
+  if (echoCancelToggle) echoCancelToggle.checked = SETTINGS.echoCancellation;
+  if (noiseSuppressionToggle) noiseSuppressionToggle.checked = SETTINGS.noiseSuppression;
+  if (videoQualitySelect) videoQualitySelect.value = String(SETTINGS.videoHeight);
+  if (videoFpsSelect) videoFpsSelect.value = String(SETTINGS.videoFps);
+  if (panelAvatarIdle) panelAvatarIdle.value = avatarIdle;
+  if (panelAvatarTalking) panelAvatarTalking.value = avatarTalking;
+  if (renameInput) renameInput.value = peerName;
 }
 
 function saveSettings() {
@@ -183,9 +207,11 @@ function saveSettings() {
 
 // ---------- Médias locaux ----------
 async function getLocalStream() {
-  const audio = { echoCancellation: true, noiseSuppression: true };
+  const audio = { echoCancellation: SETTINGS.echoCancellation, noiseSuppression: SETTINGS.noiseSuppression };
+  const height = SETTINGS.videoHeight;
+  const width = Math.round(height * 16 / 9);
   const attempts = [
-    { video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio },
+    { video: { width: { ideal: width }, height: { ideal: height }, frameRate: { ideal: SETTINGS.videoFps, max: SETTINGS.videoFps } }, audio },
     { video: false, audio }, // repli : micro seul si pas de caméra
   ];
 
@@ -208,9 +234,44 @@ async function getLocalStream() {
   localStream.getVideoTracks().forEach((t) => (t.enabled = camEnabled));
 
   localVideo.srcObject = localStream;
+  applyLocalMediaSettings();
   updateControls();
   startSpeakingDetection();
   return true;
+}
+
+async function applyLocalMediaSettings() {
+  if (!localStream) return;
+  const audioTrack = localStream.getAudioTracks()[0];
+  const videoTrack = localStream.getVideoTracks()[0];
+  if (audioTrack && audioTrack.applyConstraints) {
+    try {
+      await audioTrack.applyConstraints({
+        echoCancellation: SETTINGS.echoCancellation,
+        noiseSuppression: SETTINGS.noiseSuppression
+      });
+    } catch (err) { console.warn("Filtres micro non pris en charge :", err); }
+  }
+  if (videoTrack && videoTrack.applyConstraints) {
+    const h = SETTINGS.videoHeight;
+    try {
+      await videoTrack.applyConstraints({
+        width: { ideal: Math.round(h * 16 / 9) },
+        height: { ideal: h },
+        frameRate: { ideal: SETTINGS.videoFps, max: SETTINGS.videoFps }
+      });
+    } catch (err) { console.warn("Qualité vidéo non prise en charge :", err); }
+  }
+  for (const state of peers.values()) {
+    const sender = state.videoSender;
+    if (!sender || !sender.getParameters || !sender.setParameters) continue;
+    try {
+      const params = sender.getParameters();
+      if (!params.encodings || !params.encodings.length) params.encodings = [{}];
+      params.encodings[0].maxBitrate = SETTINGS.videoHeight <= 360 ? 450000 : SETTINGS.videoHeight <= 720 ? 1200000 : 2500000;
+      await sender.setParameters(params);
+    } catch (err) { console.warn("Limite de débit vidéo non appliquée :", err); }
+  }
 }
 
 function updateControls() {
@@ -871,6 +932,7 @@ function enterCall() {
   callScreen.classList.remove("hidden");
   roomLabel.textContent = `Salle: ${roomCode}`;
   localLabel.textContent = `${peerName} (Toi)`;
+  if (renameInput) renameInput.value = peerName;
   updateParticipantCount();
   updateTile("local");
 }
@@ -949,6 +1011,8 @@ function setAvatar(kind, value) {
     avatarTalking = value;
     storageSet("webrtcAvatarTalking", value);
   }
+  if (panelAvatarIdle && kind === "idle") panelAvatarIdle.value = value;
+  if (panelAvatarTalking && kind === "talking") panelAvatarTalking.value = value;
   updateTile("local");
   sendAvatar();
 }
@@ -999,6 +1063,44 @@ if (showNamesToggle) {
   });
 }
 settingsClose.addEventListener("click", () => settingsModal.classList.add("hidden"));
+
+if (renameSave) renameSave.addEventListener("click", () => {
+  const nextName = (renameInput.value || "").trim().slice(0, 20) || "Anonyme";
+  peerName = nextName;
+  nameInput.value = nextName;
+  localLabel.textContent = `${peerName} (Toi)`;
+  renderParticipants();
+  if (roomCode) {
+    socket.emit("update-profile", { name: peerName, avatar: { idle: avatarIdle, talking: avatarTalking } }, (result) => {
+      if (!result || !result.success) console.warn("Le changement de pseudo n'a pas été confirmé par le serveur.");
+    });
+  }
+});
+
+if (echoCancelToggle) echoCancelToggle.addEventListener("change", async () => {
+  SETTINGS.echoCancellation = echoCancelToggle.checked;
+  saveSettings();
+  await applyLocalMediaSettings();
+});
+if (noiseSuppressionToggle) noiseSuppressionToggle.addEventListener("change", async () => {
+  SETTINGS.noiseSuppression = noiseSuppressionToggle.checked;
+  saveSettings();
+  await applyLocalMediaSettings();
+});
+if (videoQualitySelect) videoQualitySelect.addEventListener("change", async () => {
+  SETTINGS.videoHeight = Number(videoQualitySelect.value) || 720;
+  saveSettings();
+  await applyLocalMediaSettings();
+});
+if (videoFpsSelect) videoFpsSelect.addEventListener("change", async () => {
+  SETTINGS.videoFps = Number(videoFpsSelect.value) || 24;
+  saveSettings();
+  await applyLocalMediaSettings();
+});
+if (avatarSave) avatarSave.addEventListener("click", () => {
+  setAvatar("idle", (panelAvatarIdle.value || "").trim());
+  setAvatar("talking", (panelAvatarTalking.value || "").trim());
+});
 settingsModal.addEventListener("click", (e) => {
   if (e.target === settingsModal) settingsModal.classList.add("hidden");
 });
@@ -1060,6 +1162,19 @@ socket.on("peer-joined", ({ id, name, avatar }) => {
 });
 
 socket.on("peer-left", ({ id }) => removePeer(id));
+
+socket.on("peer-updated", ({ id, name, avatar }) => {
+  const info = getInfo(id);
+  info.name = name || info.name;
+  if (avatar) info.avatar = cleanAvatar(avatar);
+  const tile = $(`tile-${id}`);
+  if (tile) {
+    const label = tile.querySelector(".video-label");
+    if (label) label.textContent = info.name;
+  }
+  updateTile(id);
+  renderParticipants();
+});
 
 socket.on("signal", ({ from, data }) => handleSignal(from, data));
 
