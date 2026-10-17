@@ -375,6 +375,7 @@ function updateTile(peerId) {
     : (info.screenActive ? info.screenStream || info.camStream : null);
   const camStream = isLocal ? localStream : info.camStream;
   tile.classList.toggle("is-sharing", !!sharedStream);
+  tile.classList.toggle("is-camera-preview", !!(isLocal && camEnabled && camStream && !sharedStream));
 
   if (sharedStream) {
     if (video.srcObject !== sharedStream) video.srcObject = sharedStream;
@@ -390,6 +391,15 @@ function updateTile(peerId) {
 
   video.classList.remove("screen-share");
   if (video.srcObject !== camStream) video.srcObject = camStream || null;
+
+  if (isLocal && camEnabled && camStream) {
+    img.classList.add("hidden");
+    img.classList.remove("bouncing");
+    video.classList.remove("hidden");
+    updateStageEmpty();
+    renderParticipants();
+    return;
+  }
 
   const src = pickAvatar(avatars, speaking);
   if (src) {
