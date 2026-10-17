@@ -32,6 +32,15 @@ const micBtn = $("mic-btn");
 const camBtn = $("cam-btn");
 const screenBtn = $("screen-btn");
 const participantCount = $("participant-count");
+const participantCountSide = $("participant-count-side");
+const participantsList = $("participants-list");
+const avatarStrip = $("avatar-strip");
+const showNamesToggle = $("show-names-toggle");
+const panelToggle = $("panel-toggle");
+const panelClose = $("panel-close");
+const rightPanel = $("right-panel");
+const stageEmpty = $("stage-empty");
+const settingsBtnSecondary = $("settings-btn-secondary");
 
 const settingsModal = $("settings-modal");
 const bounceEnabledInput = $("bounce-enabled");
@@ -69,7 +78,7 @@ let localStream = null;
 let screenStream = null;
 let isScreenSharing = false;
 let micEnabled = true;
-let camEnabled = true;
+let camEnabled = false;
 let roomCode = null;
 let peerName = "";
 let localSpeaking = false;
@@ -301,6 +310,7 @@ function updateTile(peerId) {
     ? (isScreenSharing ? screenStream : null)
     : (info.screenActive ? info.screenStream || info.camStream : null);
   const camStream = isLocal ? localStream : info.camStream;
+  tile.classList.toggle("is-sharing", !!sharedStream);
 
   if (sharedStream) {
     if (video.srcObject !== sharedStream) video.srcObject = sharedStream;
@@ -309,6 +319,7 @@ function updateTile(peerId) {
     video.classList.remove("hidden");
     video.classList.add("screen-share");
     if (!isLocal) playMedia(video);
+    updateStageEmpty();
     return;
   }
 
@@ -328,8 +339,10 @@ function updateTile(peerId) {
   } else {
     img.classList.add("hidden");
     img.classList.remove("bouncing");
-    video.classList.remove("hidden");
+    video.classList.add("hidden");
   }
+  updateStageEmpty();
+  renderParticipants();
 }
 
 function updateAllTiles() {
@@ -340,6 +353,60 @@ function updateAllTiles() {
 function updateParticipantCount() {
   const count = peerInfo.size + 1;
   participantCount.textContent = `${count} participant${count > 1 ? "s" : ""}`;
+  if (participantCountSide) participantCountSide.textContent = String(count);
+  renderParticipants();
+}
+
+function getParticipantAvatar(avatar, speaking) {
+  return pickAvatar(avatar, speaking) || "";
+}
+
+function renderParticipants() {
+  if (!participantsList || !avatarStrip) return;
+  const people = [{
+    id: "local", name: peerName || "Toi",
+    avatar: { idle: avatarIdle, talking: avatarTalking },
+    speaking: localSpeaking, local: true
+  }, ...Array.from(peerInfo.entries()).map(([id, info]) => ({
+    id, name: info.name || id.slice(0, 6), avatar: info.avatar, speaking: !!info.speaking, local: false
+  }))];
+
+  participantsList.replaceChildren();
+  avatarStrip.replaceChildren();
+  for (const person of people) {
+    const src = getParticipantAvatar(person.avatar, person.speaking);
+    const row = document.createElement("div");
+    row.className = "participant-row" + (person.speaking ? " speaking" : "");
+    const rowAvatar = src ? document.createElement("img") : document.createElement("span");
+    rowAvatar.className = "participant-row-avatar" + (src ? "" : " participant-row-initial");
+    if (src) { rowAvatar.src = src; rowAvatar.alt = ""; }
+    else rowAvatar.textContent = (person.name || "?").slice(0, 1).toUpperCase();
+    const rowName = document.createElement("span");
+    rowName.className = "participant-row-name participant-name";
+    rowName.textContent = person.local ? `${person.name} (toi)` : person.name;
+    const status = document.createElement("span");
+    status.className = "participant-status";
+    status.textContent = person.speaking ? "Parle" : (person.local ? (micEnabled ? "Micro actif" : "Micro coupé") : "Connecté");
+    row.append(rowAvatar, rowName, status);
+    participantsList.appendChild(row);
+
+    const chip = document.createElement("div");
+    chip.className = "avatar-chip" + (person.speaking ? " speaking" : "");
+    const chipAvatar = src ? document.createElement("img") : document.createElement("span");
+    chipAvatar.className = src ? "avatar-chip-image" : "avatar-placeholder";
+    if (src) { chipAvatar.src = src; chipAvatar.alt = ""; }
+    else chipAvatar.textContent = (person.name || "?").slice(0, 1).toUpperCase();
+    const chipName = document.createElement("span");
+    chipName.className = "avatar-name";
+    chipName.textContent = person.local ? `${person.name} (toi)` : person.name;
+    chip.append(chipAvatar, chipName);
+    avatarStrip.appendChild(chip);
+  }
+}
+
+function updateStageEmpty() {
+  if (!stageEmpty || !videoGrid) return;
+  stageEmpty.classList.toggle("hidden", !!videoGrid.querySelector(".video-tile.is-sharing"));
 }
 
 function playMedia(el) {
@@ -921,6 +988,14 @@ speakingThresholdInput.addEventListener("input", () => {
 });
 
 settingsBtn.addEventListener("click", () => settingsModal.classList.remove("hidden"));
+if (settingsBtnSecondary) settingsBtnSecondary.addEventListener("click", () => settingsModal.classList.remove("hidden"));
+if (panelToggle) panelToggle.addEventListener("click", () => rightPanel.classList.toggle("collapsed"));
+if (panelClose) panelClose.addEventListener("click", () => rightPanel.classList.add("collapsed"));
+if (showNamesToggle) {
+  showNamesToggle.addEventListener("change", () => {
+    callScreen.classList.toggle("hide-participant-names", !showNamesToggle.checked);
+  });
+}
 settingsClose.addEventListener("click", () => settingsModal.classList.add("hidden"));
 settingsModal.addEventListener("click", (e) => {
   if (e.target === settingsModal) settingsModal.classList.add("hidden");
@@ -1002,6 +1077,8 @@ socket.on("chat", (msg) => addChatMessage(msg, false));
 
 // ---------- Démarrage ----------
 loadSettings();
+callScreen.classList.toggle("hide-participant-names", !showNamesToggle.checked);
+updateStageEmpty();
 
 const roomParam = new URLSearchParams(window.location.search).get("room");
 if (roomParam) joinCodeInput.value = roomParam;
