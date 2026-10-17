@@ -61,6 +61,11 @@ io.on("connection", (socket) => {
     io.to(to).emit("signal", { from: peerId, data });
   });
 
+  socket.on("broadcast", (data) => {
+    if (!currentRoom) return;
+    socket.to(currentRoom).emit("broadcast", { from: peerId, data });
+  });
+
   socket.on("leave-room", () => {
     handleLeave();
   });

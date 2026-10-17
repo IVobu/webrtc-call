@@ -61,14 +61,41 @@ Donne simplement ton IP locale (ex: `http://192.168.1.42:3000`).
 3. **Appel** — micro, caméra et partage d'écran fonctionnent en P2P
 4. **Quitter** — le code de salle est supprimé une fois tout le monde parti
 
+## Avatar réactif
+
+Chaque participant peut définir deux images (URL ou fichier) sur la page d'accueil :
+
+- **Image au repos** — affichée par défaut
+- **Image en parlant** — affichée quand le micro détecte la parole
+
+La détection de parole se fait localement via la Web Audio API (niveau du micro). L'état
+`parle / ne parle pas` est ensuite diffusé aux autres participants pour que leur tuile
+mette à jour l'avatar.
+
+### Réglages (bouton "Réglages" en appel)
+
+| Réglage | Défaut | Description |
+|---------|--------|-------------|
+| Bounce de l'avatar à la parole | **désactivé** | Anime l'avatar (zoom) quand tu parles |
+| Intensité du bounce | 1.15 | Facteur d'échelle de l'animation |
+| Sensibilité micro | 18 | Seuil de volume pour considérer que tu parles |
+
+Les réglages et les images sont sauvegardés dans le `localStorage` du navigateur.
+
+## Partage d'écran
+
+Le partage d'écran est propagé à tous les participants. Quand un participant partage son
+écran, sa tuile passe de l'avatar (ou de la caméra) à l'écran partagé, puis revient à
+l'état précédent à la fin du partage.
+
 ## Fichiers
 
 | Fichier | Rôle |
 |---------|------|
-| `server.js` | Serveur Express + Socket.io (signalisation) |
+| `server.js` | Serveur Express + Socket.io (signalisation + broadcast) |
 | `public/index.html` | Interface utilisateur |
 | `public/style.css` | Styles |
-| `public/client.js` | Logique WebRTC (connexions P2P, médias) |
+| `public/client.js` | Logique WebRTC (connexions P2P, médias, avatar réactif) |
 
 ## Limites
 

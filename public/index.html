@@ -29,6 +29,20 @@
 
     <button id="join-btn" class="btn btn-secondary">Rejoindre un appel</button>
 
+    <div class="divider"><span>Avatar réactif (optionnel)</span></div>
+
+    <div class="form-group">
+      <label for="avatar-idle-input">Image au repos (URL ou fichier)</label>
+      <input type="text" id="avatar-idle-input" placeholder="https://exemple.com/repos.gif">
+      <input type="file" id="avatar-idle-file" accept="image/*" class="file-input">
+    </div>
+
+    <div class="form-group">
+      <label for="avatar-talking-input">Image en parlant (URL ou fichier)</label>
+      <input type="text" id="avatar-talking-input" placeholder="https://exemple.com/parle.gif">
+      <input type="file" id="avatar-talking-file" accept="image/*" class="file-input">
+    </div>
+
     <p id="home-error" class="error"></p>
   </div>
 </div>
@@ -36,13 +50,15 @@
 <div id="call-screen" class="screen hidden">
   <div class="call-header">
     <span id="room-label">Salle: </span>
+    <button id="settings-btn" class="btn btn-small" title="Réglages">Réglages</button>
     <button id="copy-link-btn" class="btn btn-small">Copier le lien</button>
     <button id="leave-btn" class="btn btn-small btn-danger">Quitter</button>
   </div>
 
   <div id="video-grid" class="video-grid">
     <div class="video-tile" id="local-tile">
-      <video id="local-video" autoplay muted playsinline></video>
+      <video id="local-video" class="cam-video" autoplay muted playsinline></video>
+      <img id="local-avatar" class="avatar-img hidden" alt="">
       <span class="video-label" id="local-label">Toi</span>
       <div class="video-controls">
         <button id="mic-btn" class="ctrl-btn active" title="Micro">Mic</button>
@@ -54,6 +70,31 @@
 
   <div id="participants-bar" class="participants-bar">
     <span id="participant-count"></span>
+  </div>
+</div>
+
+<div id="settings-modal" class="modal hidden">
+  <div class="modal-content">
+    <h2>Réglages</h2>
+
+    <label class="setting-row">
+      <input type="checkbox" id="bounce-enabled">
+      <span>Bounce de l'avatar à la parole</span>
+    </label>
+
+    <label class="setting-row">
+      <span>Intensité du bounce</span>
+      <input type="range" id="bounce-intensity" min="1" max="1.5" step="0.05" value="1.15">
+      <span id="bounce-intensity-value">1.15</span>
+    </label>
+
+    <label class="setting-row">
+      <span>Sensibilité micro</span>
+      <input type="range" id="speaking-threshold" min="5" max="50" step="1" value="18">
+      <span id="speaking-threshold-value">18</span>
+    </label>
+
+    <button id="settings-close" class="btn btn-primary">Fermer</button>
   </div>
 </div>
 
