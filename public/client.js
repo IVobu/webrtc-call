@@ -472,6 +472,12 @@ function renderParticipants() {
         peerAudioSettings.set(person.id, audioSettings);
         const audio = $(`tile-${person.id}`)?.querySelector("audio");
         if (audio) audio.muted = audioSettings.muted;
+        const info = peerInfo.get(person.id);
+        if (info) {
+          for (const streamId of info.screenStreams.keys()) {
+            applyScreenAudioVolume(person.id, streamId, document.getElementById(`screen-share-${streamId}`)?.querySelector("audio"));
+          }
+        }
         muteLabel.lastChild.textContent = mute.checked ? " Participant en sourdine" : " Son du participant";
       });
       muteLabel.append(mute, document.createTextNode(audioSettings.muted ? " Participant en sourdine" : " Son du participant"));
@@ -491,6 +497,12 @@ function renderParticipants() {
         peerAudioSettings.set(person.id, audioSettings);
         const audio = $(`tile-${person.id}`)?.querySelector("audio");
         if (audio) setMediaElementVolume(audio, audioSettings.volume);
+        const info = peerInfo.get(person.id);
+        if (info) {
+          for (const streamId of info.screenStreams.keys()) {
+            applyScreenAudioVolume(person.id, streamId, document.getElementById(`screen-share-${streamId}`)?.querySelector("audio"));
+          }
+        }
         volumeLabel.textContent = `Volume : ${volume.value} %`;
       });
       controls.append(muteLabel, volumeLabel, volume);
@@ -559,6 +571,16 @@ function setMediaElementVolume(el, value) {
   }
 }
 
+function applyScreenAudioVolume(ownerId, streamId, audio) {
+  if (!audio) return;
+  const screen = screenAudioSettings.get(streamId) || { volume: 1, muted: false };
+  const participant = ownerId === "local"
+    ? { volume: 1, muted: false }
+    : (peerAudioSettings.get(ownerId) || { volume: 1, muted: false });
+  setMediaElementVolume(audio, Math.min(2, screen.volume * participant.volume));
+  audio.muted = ownerId === "local" || !!screen.muted || !!participant.muted;
+}
+
 function attachCamStream(peerId, stream) {
   const info = getInfo(peerId);
   info.camStream = stream;
@@ -615,7 +637,7 @@ function renderScreenShareTile(ownerId, stream, isLocal) {
     volume.addEventListener("input", () => {
       saved.volume = Number(volume.value) / 100;
       screenAudioSettings.set(stream.id, saved);
-      setMediaElementVolume(audio, saved.volume);
+      applyScreenAudioVolume(ownerId, stream.id, audio);
       volumeLabel.textContent = `Son ${volume.value}%`;
     });
     controls.append(volumeLabel, volume);
@@ -652,7 +674,7 @@ function renderScreenShareTile(ownerId, stream, isLocal) {
   const settings = screenAudioSettings.get(stream.id) || { volume: 1, muted: false };
   if (video.srcObject !== stream) video.srcObject = stream;
   if (audio.srcObject !== stream) audio.srcObject = stream;
-  setMediaElementVolume(audio, settings.volume); audio.muted = !!isLocal || settings.muted;
+  applyScreenAudioVolume(ownerId, stream.id, audio);
   if (!isLocal) playMedia(audio);
   playMedia(video);
   const ownerName = isLocal ? (peerName || "Toi") : (peerInfo.get(ownerId)?.name || ownerId.slice(0, 6));
@@ -839,6 +861,13 @@ function handleSignal(from, data) {
 }
 
 function removePeer(peerId) {
+  const info = peerInfo.get(peerId);
+  if (info) {
+    for (const streamId of info.screenStreams.keys()) {
+      document.getElementById(`screen-share-${streamId}`)?.remove();
+      screenAudioSettings.delete(streamId);
+    }
+  }
   const state = peers.get(peerId);
   if (state) {
     state.pc.onconnectionstatechange = null;
