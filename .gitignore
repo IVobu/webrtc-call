@@ -1,3 +1,6 @@
 node_modules/
 .env
 *.log
+
+tunnel.log
+tunnel.err
