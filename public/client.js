@@ -574,6 +574,7 @@ function renderScreenShareTile(ownerId, stream, isLocal) {
     volume.setAttribute("aria-label", "Volume de ce partage d'écran");
     const saved = screenAudioSettings.get(stream.id) || { volume: 1, muted: false };
     volume.value = String(Math.round(saved.volume * 100));
+    volumeLabel.textContent = `Son ${volume.value}%`;
     volume.addEventListener("click", (event) => event.stopPropagation());
     volume.addEventListener("input", () => {
       saved.volume = Number(volume.value) / 100;
@@ -970,6 +971,7 @@ function leaveCall() {
   });
   peers.clear();
   peerInfo.clear();
+  peerAudioSettings.clear();
   document.querySelectorAll(".video-tile:not(#local-tile)").forEach((t) => {
     t.querySelectorAll("video, audio").forEach((el) => (el.srcObject = null));
     t.remove();
