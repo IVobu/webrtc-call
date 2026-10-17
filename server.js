@@ -186,6 +186,19 @@ io.on("connection", (socket) => {
     io.to(payload.to).emit("signal", { from: peerId, data });
   });
 
+  socket.on("update-profile", (payload, callback) => {
+    if (!currentRoom || !peerId || !payload || typeof payload !== "object") return;
+    const room = rooms.get(currentRoom);
+    const peer = room && room.peers.get(peerId);
+    if (!peer) return;
+    const name = cleanName(payload.name);
+    const avatar = cleanAvatar(payload.avatar);
+    peer.name = name;
+    peer.avatar = avatar;
+    socket.to(currentRoom).emit("peer-updated", { id: peerId, name, avatar });
+    if (typeof callback === "function") callback({ success: true, name, avatar });
+  });
+
   socket.on("broadcast", (data) => {
     if (!currentRoom || !data || typeof data !== "object") return;
     if (!broadcastLimiter()) return;
