@@ -82,20 +82,6 @@ mette à jour l'avatar.
 
 Les réglages et les images sont sauvegardés dans le `localStorage` du navigateur.
 
-## Chat
-
-Le bouton **Chat** (à côté de « Réglages ») ouvre un petit panneau de discussion. Les 50 derniers
-messages sont conservés tant que la salle existe. Messages limités à 500 caractères.
-
-## Serveur TURN (optionnel, recommandé)
-
-Sans TURN, certaines connexions (4G, réseaux d'entreprise, NAT stricts) échouent. Le serveur expose
-`/ice-config` et lit ces variables d'environnement :
-
-```bash
-TURN_URL="turn:mon-serveur:3478" TURN_USERNAME=user TURN_CREDENTIAL=secret node server.js
-```
-
 ## Partage d'écran
 
 Le partage d'écran est propagé à tous les participants. Quand un participant partage son
