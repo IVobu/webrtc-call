@@ -162,11 +162,12 @@ io.on("connection", (socket) => {
       id: p.socketId,
       name: p.name,
       avatar: p.avatar,
+      cameraEnabled: !!p.cameraEnabled,
     }));
 
-    room.peers.set(peerId, { socketId: peerId, name, avatar: cleanedAvatar });
+    room.peers.set(peerId, { socketId: peerId, name, avatar: cleanedAvatar, cameraEnabled: false });
 
-    socket.to(code).emit("peer-joined", { id: peerId, name, avatar: cleanedAvatar });
+    socket.to(code).emit("peer-joined", { id: peerId, name, avatar: cleanedAvatar, cameraEnabled: false });
 
     console.log(`[+] ${name} a rejoint ${code} (${room.peers.size} en ligne)`);
     callback({ success: true, peerId, roomCode: code, otherPeers, history: room.chat });
@@ -194,10 +195,12 @@ io.on("connection", (socket) => {
     if (!peer) return;
     const name = cleanName(payload.name);
     const avatar = cleanAvatar(payload.avatar);
+    const cameraEnabled = typeof payload.cameraEnabled === "boolean" ? payload.cameraEnabled : !!peer.cameraEnabled;
     peer.name = name;
     peer.avatar = avatar;
-    socket.to(currentRoom).emit("peer-updated", { id: peerId, name, avatar });
-    if (typeof callback === "function") callback({ success: true, name, avatar });
+    peer.cameraEnabled = cameraEnabled;
+    socket.to(currentRoom).emit("peer-updated", { id: peerId, name, avatar, cameraEnabled });
+    if (typeof callback === "function") callback({ success: true, name, avatar, cameraEnabled });
   });
 
   socket.on("broadcast", (data) => {
