@@ -2,7 +2,11 @@ const peersContainer = document.getElementById("overlay-peers");
 const statusLabel = document.getElementById("overlay-status");
 const peers = new Map();
 const socket = io();
-const roomCode = new URLSearchParams(window.location.hash.replace(/^#/, "")).get("room");
+const overlayParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+const roomCode = overlayParams.get("room");
+const requestedPeerId = overlayParams.get("peer");
+const isValidPeerFilter = requestedPeerId === null || /^[A-Za-z0-9_-]{1,64}$/.test(requestedPeerId);
+const peerFilter = requestedPeerId || "";
 const isValidRoomCode = typeof roomCode === "string" && /^[a-z0-9]{3,10}$/i.test(roomCode);
 
 function isValidAvatar(value) {
@@ -12,7 +16,7 @@ function isValidAvatar(value) {
 }
 
 function updatePeer(peer) {
-  if (!peer || typeof peer.id !== "string") return;
+  if (!peer || typeof peer.id !== "string" || (peerFilter && peer.id !== peerFilter)) return false;
   let tile = peers.get(peer.id);
   if (!tile) {
     tile = document.createElement("article");
@@ -53,6 +57,7 @@ function updatePeer(peer) {
     element.classList.toggle("avatar-bounce", speaking && profile.bounce === true);
     element.classList.toggle("avatar-idle-dim", !speaking && profile.dimIdle === true);
   }
+  return true;
 }
 
 function removePeer(peerId) {
@@ -62,8 +67,8 @@ function removePeer(peerId) {
 }
 
 socket.on("connect", () => {
-  if (!isValidRoomCode) {
-    statusLabel.textContent = "Lien OBS invalide : code de salle absent.";
+  if (!isValidRoomCode || !isValidPeerFilter) {
+    statusLabel.textContent = "Lien OBS invalide : code de salle ou filtre participant incorrect.";
     return;
   }
   socket.emit("overlay-watch", { roomCode }, (response) => {
@@ -73,12 +78,18 @@ socket.on("connect", () => {
         : "Impossible de rejoindre la source OBS.";
       return;
     }
-    statusLabel.remove();
-    response.peers.forEach(updatePeer);
+    let selectedPeerFound = false;
+    response.peers.forEach((peer) => {
+      if (updatePeer(peer)) selectedPeerFound = true;
+    });
+    if (selectedPeerFound || !peerFilter) statusLabel.remove();
+    else statusLabel.textContent = "En attente du participant sélectionné…";
   });
 });
 
-socket.on("overlay-peer", updatePeer);
+socket.on("overlay-peer", (peer) => {
+  if (updatePeer(peer)) statusLabel.remove();
+});
 socket.on("overlay-peer-left", ({ id }) => removePeer(id));
 socket.on("overlay-ended", () => {
   peers.clear();

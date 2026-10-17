@@ -29,6 +29,7 @@ class Element {
     this.listeners = {};
     this.attributes = {};
     this.dataset = {};
+    this.style = { values: {}, setProperty(name, value) { this.values[name] = value; } };
     this.textContent = "";
     this.srcObject = null;
     this.parentNode = null;
@@ -68,7 +69,9 @@ class Element {
       visit(child);
     });
     visit(this);
-    return descendants.find((element) => element.classList.contains(selector.slice(1))) || null;
+    return descendants.find((element) => selector.startsWith(".")
+      ? element.classList.contains(selector.slice(1))
+      : element.tagName === selector.toUpperCase()) || null;
   }
   closest(selector) {
     for (let element = this; element; element = element.parentNode) {
@@ -150,6 +153,9 @@ class PeerConnectionMock {
 
 function createClient() {
   const elements = new Map();
+  const callLayout = new Element("call-layout");
+  callLayout.className = "call-layout";
+  const documentListeners = {};
   const document = {
     getElementById(id) {
       if (!elements.has(id)) elements.set(id, new Element(id));
@@ -160,14 +166,26 @@ function createClient() {
       element.tagName = tag;
       return element;
     },
+    querySelector(selector) {
+      return selector === ".call-layout" ? callLayout : null;
+    },
     querySelectorAll() { return []; },
+    addEventListener(name, callback) {
+      (documentListeners[name] ||= []).push(callback);
+    },
+    removeEventListener(name, callback) {
+      documentListeners[name] = (documentListeners[name] || []).filter((item) => item !== callback);
+    },
   };
   document.getElementById("camera-device-select").value = "__default__";
   document.getElementById("screen-resolution").value = "540";
   document.getElementById("screen-frame-rate").value = "15";
+  document.getElementById("screen-share-audio").checked = false;
 
   const mediaCalls = [];
   let displayCalls = 0;
+  let displayAudioAvailable = false;
+  const displayRequests = [];
   let nextMediaError = null;
   const mediaDevices = {
     getSupportedConstraints() {
@@ -199,9 +217,14 @@ function createClient() {
       }
       throw new Error("Unexpected getUserMedia constraints");
     },
-    async getDisplayMedia() {
+    async getDisplayMedia(constraints) {
       displayCalls += 1;
-      return new MediaStreamMock([new MediaTrack("video", `share-${displayCalls}`)]);
+      displayRequests.push(constraints);
+      const tracks = [new MediaTrack("video", `share-${displayCalls}`)];
+      if (constraints.audio && displayAudioAvailable) {
+        tracks.push(new MediaTrack("audio", `share-audio-${displayCalls}`));
+      }
+      return new MediaStreamMock(tracks);
     },
   };
 
@@ -244,6 +267,7 @@ function createClient() {
         lastReplacement: null,
         replaceState(_state, _title, url) { this.lastReplacement = url; },
       },
+      innerWidth: 1280,
       AudioContext: AudioContextMock,
     },
     io: () => socket,
@@ -285,15 +309,21 @@ function createClient() {
       switchCameraDevice, startScreenShare, stopScreenShare, handleSignal,
       importAvatar, isValidAvatarDataUrl, localStream: () => localStream,
       audioSenders, videoSenders, shareSenders, shareSources, remoteVideos,
+      shareAudioSenders, remoteShareAudio, screenShareNotice: () => screenShareNotice,
       remoteAvatarProfiles, localAvatarProfile, peers, setLocalSpeaking,
       saveAvatarPreferences, loadAvatarProfile, getRoomCodeFromHash,
       makeRoomLink, makeOverlayLink, clearRoomCodeFromAddress, saveName,
-      loadName, NAME_STORAGE_KEY, remoteAudio, participantRows
+      loadName, NAME_STORAGE_KEY, remoteAudio, participantRows,
+      loadLayoutPreferences, saveLayoutPreferences, applyLayoutPreferences,
+      setPseudonymsVisible, layoutPreferences: () => layoutPreferences,
+      resizePanelFromKeyboard, callLayout
     };`, context);
   return Object.assign(context.testApi, {
     emitted,
     mediaCalls,
     getDisplayCalls: () => displayCalls,
+    displayRequests,
+    setDisplayAudioAvailable: (available) => { displayAudioAvailable = available; },
     setNextMediaError: (error) => { nextMediaError = error; },
     setHash: (hash) => { context.window.location.hash = hash; },
     history: context.window.history,
@@ -302,18 +332,57 @@ function createClient() {
   });
 }
 
+function createOverlay(hash) {
+  const elements = new Map();
+  const document = {
+    getElementById(id) {
+      if (!elements.has(id)) elements.set(id, new Element(id));
+      return elements.get(id);
+    },
+    createElement(tag) {
+      const element = new Element(tag);
+      element.tagName = tag.toUpperCase();
+      return element;
+    },
+  };
+  const context = {
+    document,
+    window: { location: { hash } },
+    URLSearchParams,
+    Map,
+    Set,
+    String,
+    Boolean,
+    RegExp,
+    io: () => ({ on() {}, emit() {} }),
+  };
+  const source = fs.readFileSync("public/overlay.js", "utf8");
+  vm.runInNewContext(`${source}
+    globalThis.overlayTestApi = { updatePeer, peers, peerFilter, isValidPeerFilter, isValidRoomCode };`,
+  context);
+  return Object.assign(context.overlayTestApi, { elements });
+}
+
 async function run() {
   const app = createClient();
   const markup = fs.readFileSync("public/index.html", "utf8");
   const styles = fs.readFileSync("public/style.css", "utf8");
   assert(markup.indexOf("participants-sidebar") < markup.indexOf("class=\"call-main\""));
   assert(markup.indexOf("class=\"call-main\"") < markup.indexOf("class=\"call-settings\""));
+  assert(markup.indexOf("id=\"local-tile\"") < markup.indexOf("id=\"video-grid\""));
   assert(markup.indexOf("id=\"video-grid\"") < markup.indexOf("id=\"avatar-strip\""));
   assert.match(markup, /id="mic-btn"[^>]*>Micro<\/button>/);
   assert.match(markup, /id="cam-btn"[^>]*>Caméra<\/button>/);
   assert.match(markup, /id="screen-btn"[^>]*>Screenshare<\/button>/);
   assert.doesNotMatch(markup, /privacy-mode|Masquer les noms/);
+  assert.match(markup, /id="show-pseudonyms"[^>]*checked/);
+  assert.match(markup, /participants-resizer/);
+  assert.match(markup, /settings-resizer/);
+  assert.match(styles, /\.participant-overlay-menu/);
+  assert.match(markup, /id="screen-share-audio"/);
+  assert.match(styles, /\.share-audio-controls/);
   assert.match(styles, /#call-screen\s*\{[^}]*height:\s*100vh/s);
+  assert.match(styles, /grid-template-areas:\s*"participants participants-resizer main settings-resizer settings"/);
   assert.match(styles, /\.share-tile,\s*\.local-share-tile\s*\{[^}]*resize:\s*both/s);
   assert.match(styles, /@media\s*\(max-width:\s*650px\)/);
 
@@ -323,6 +392,32 @@ async function run() {
   assert.equal(app.getRoomCodeFromHash(), "", "invalid room fragments should be rejected");
   assert.equal(app.makeRoomLink("abc123"), "https://test.invalid/#room=abc123");
   assert.equal(app.makeOverlayLink("abc123"), "https://test.invalid/overlay.html#room=abc123");
+  assert.equal(
+    app.makeOverlayLink("abc123", "peer_test-123"),
+    "https://test.invalid/overlay.html#room=abc123&peer=peer_test-123"
+  );
+  const filteredOverlay = createOverlay("#room=abc123&peer=peer_test-123");
+  assert.equal(filteredOverlay.isValidPeerFilter, true);
+  assert.equal(filteredOverlay.updatePeer({
+    id: "other_peer",
+    name: "Other",
+    avatar: {},
+    speaking: false,
+  }), false, "individual OBS overlay should ignore other participants");
+  assert.equal(filteredOverlay.peers.size, 0);
+  assert.equal(filteredOverlay.updatePeer({
+    id: "peer_test-123",
+    name: "Selected",
+    avatar: {},
+    speaking: true,
+  }), true);
+  assert.equal(filteredOverlay.peers.size, 1);
+  const groupOverlay = createOverlay("#room=abc123");
+  groupOverlay.updatePeer({ id: "first", name: "First", avatar: {}, speaking: false });
+  groupOverlay.updatePeer({ id: "second", name: "Second", avatar: {}, speaking: true });
+  assert.equal(groupOverlay.peers.size, 2, "group OBS overlay should display all participants");
+  const invalidOverlay = createOverlay("#room=abc123&peer=%3Cscript%3E");
+  assert.equal(invalidOverlay.isValidPeerFilter, false, "invalid participant filters should not fall back to group view");
   app.setHash("#room=abc123");
   app.clearRoomCodeFromAddress();
   assert.equal(app.history.lastReplacement, "/", "successful join should strip the code fragment");
@@ -332,6 +427,25 @@ async function run() {
   app.loadName();
   assert.equal(app.elements.get("name-input").value, "Nobu", "pseudo should persist locally");
   assert.equal(app.savedValues.has(app.NAME_STORAGE_KEY), true);
+  assert.equal(app.layoutPreferences().participantsWidth, 220, "default participant panel width should be applied");
+  assert.equal(app.layoutPreferences().settingsWidth, 260, "default settings panel width should be applied");
+  app.resizePanelFromKeyboard(
+    { key: "ArrowRight", preventDefault() {} },
+    "participants"
+  );
+  assert.equal(app.layoutPreferences().participantsWidth, 236);
+  assert.equal(JSON.parse(app.savedValues.get("webrtc-call-layout-v1")).participantsWidth, 236);
+  app.layoutPreferences().settingsDocked = true;
+  app.applyLayoutPreferences();
+  assert.equal(app.callLayout.classList.contains("settings-docked"), true);
+  assert.equal(app.callLayout.style.values["--settings-width"], "54px");
+  app.setPseudonymsVisible(false);
+  assert.equal(app.callLayout.classList.contains("pseudos-hidden"), false);
+  assert.equal(app.elements.get("call-screen").classList.contains("pseudos-hidden"), true);
+  assert.equal(app.elements.get("show-pseudonyms").checked, false);
+  assert.equal(app.savedValues.get("webrtc-call-show-pseudonyms-v1"), "false");
+  app.setPseudonymsVisible(true);
+  assert.equal(app.elements.get("call-screen").classList.contains("pseudos-hidden"), false);
 
   assert.equal(await app.getLocalStream(), true, "microphone-only startup should succeed");
   assert.equal(app.mediaCalls.length, 1, "camera must not be requested during startup");
@@ -362,6 +476,18 @@ async function run() {
   app.setLocalSpeaking(false);
   assert.equal(localAvatar.classList.contains("avatar-idle-dim"), false);
   app.addRemoteVideo("peer", "Alice");
+  const participantMenu = app.participantRows.get("peer").children.find((child) =>
+    child.classList.contains("participant-overlay-menu")
+  );
+  const participantNameButton = app.participantRows.get("peer").children.find((child) =>
+    child.classList.contains("participant-name-button")
+  );
+  participantNameButton.listeners.click[0]();
+  assert.equal(participantMenu.classList.contains("hidden"), false, "clicking a participant name should open its OBS menu");
+  participantNameButton.listeners.click[0]();
+  assert.equal(participantMenu.classList.contains("hidden"), true);
+  assert.equal(participantMenu.children[0].textContent, "Copier lien OBS individuel");
+  assert.equal(participantMenu.children[1].textContent, "Copier lien OBS du groupe");
   app.createPeerConnection("peer");
   app.saveAvatarPreferences();
   assert.equal(app.emitted.some(({ payload }) =>
@@ -389,21 +515,33 @@ async function run() {
   assert.equal(app.videoSenders.get("peer").track, null, "camera disable should clear its sender");
 
   await app.startScreenShare();
+  assert.equal(app.shareSources.size, 1);
+  assert.equal(app.getDisplayCalls(), 1);
+  assert.equal(app.displayRequests[0].audio, false, "screen audio capture should be off by default");
+  app.elements.get("screen-share-audio").checked = true;
+  app.setDisplayAudioAvailable(true);
   await app.startScreenShare();
-  assert.equal(app.shareSources.size, 2, "two independent sources should be active");
   assert.equal(app.getDisplayCalls(), 2);
+  assert.equal(app.displayRequests[1].audio, true, "audio must be explicitly requested for the selected capture");
+  assert.equal(app.shareSources.size, 2, "two independent sources should be active");
+  await app.startScreenShare();
+  assert.equal(app.getDisplayCalls(), 2, "the simultaneous share limit must prevent a third capture");
   const sources = [...app.shareSources.values()];
   assert.notEqual(
     app.shareSenders.get("peer")[sources[0].slot].track,
     app.shareSenders.get("peer")[sources[1].slot].track
   );
-  await app.startScreenShare();
-  assert.equal(app.getDisplayCalls(), 2, "the simultaneous share limit must prevent a third capture");
-
+  assert.equal(
+    app.shareAudioSenders.get("peer")[sources[1].slot].track.id,
+    "share-audio-2",
+    "display audio must use the matching per-share audio transceiver"
+  );
   await app.stopScreenShare(sources[0].id);
   assert.equal(app.shareSources.size, 1);
   assert.equal(app.shareSenders.get("peer")[sources[0].slot].track, null);
   assert.equal(app.shareSenders.get("peer")[sources[1].slot].track, sources[1].track);
+  assert.equal(app.shareAudioSenders.get("peer")[sources[0].slot].track, null);
+  assert.equal(app.shareAudioSenders.get("peer")[sources[1].slot].track, sources[1].stream.getAudioTracks()[0]);
   assert(
     app.emitted.some(({ name, payload }) =>
       name === "signal" && payload.data.type === "share-ended" &&
@@ -418,6 +556,11 @@ async function run() {
     app.shareSenders.get("late-peer")[sources[1].slot].track,
     sources[1].track,
     "new peers should receive sources already being shared"
+  );
+  assert.equal(
+    app.shareAudioSenders.get("late-peer")[sources[1].slot].track,
+    sources[1].stream.getAudioTracks()[0],
+    "late peers should receive the active display audio track on its dedicated transceiver"
   );
 
   app.handleSignal("peer", {
@@ -476,7 +619,41 @@ async function run() {
     transceiver: { sender: shareSender },
   });
   assert.equal(app.remoteVideos.get("peer").has(`share-${sources[1].slot}`), true);
-  assert.equal(app.elements.get("video-grid").children.length, 1);
+  const remoteShareAudioTrack = new MediaTrack("audio", "remote-share-audio");
+  app.peers.get("peer").ontrack({
+    track: remoteShareAudioTrack,
+    streams: [],
+    transceiver: { sender: app.shareAudioSenders.get("peer")[sources[1].slot] },
+  });
+  const remoteShareAudio = app.remoteShareAudio.get("peer").get(sources[1].slot);
+  assert.equal(remoteShareAudio.audio.srcObject.getAudioTracks()[0], remoteShareAudioTrack);
+  const shareVolume = remoteShareAudio.controls.children.find((child) => child.type === "range");
+  shareVolume.value = "0.4";
+  shareVolume.listeners.input[0]();
+  assert.equal(remoteShareAudio.audio.volume, 0.4, "share volume should be independently adjustable");
+  const shareMute = remoteShareAudio.controls.children.find((child) => child.type === "button");
+  shareMute.listeners.click[0]();
+  assert.equal(remoteShareAudio.audio.muted, true, "share mute should affect only this share audio");
+  assert.equal(app.remoteAudio.get("peer").muted, false, "share mute must not alter participant microphone audio");
+  const otherShareTrack = new MediaTrack("video", "other-remote-share");
+  app.peers.get("peer").ontrack({
+    track: otherShareTrack,
+    streams: [],
+    transceiver: { sender: app.shareSenders.get("peer")[0] },
+  });
+  const otherShareAudioTrack = new MediaTrack("audio", "other-remote-share-audio");
+  app.peers.get("peer").ontrack({
+    track: otherShareAudioTrack,
+    streams: [],
+    transceiver: { sender: app.shareAudioSenders.get("peer")[0] },
+  });
+  const otherRemoteShareAudio = app.remoteShareAudio.get("peer").get(0);
+  const otherShareVolume = otherRemoteShareAudio.controls.children.find((child) => child.type === "range");
+  otherShareVolume.value = "0.8";
+  otherShareVolume.listeners.input[0]();
+  assert.equal(otherRemoteShareAudio.audio.volume, 0.8);
+  assert.equal(remoteShareAudio.audio.volume, 0.4, "changing one share volume must not change another share");
+  assert.equal(app.elements.get("video-grid").children.length, 2);
   const localShareVisibility = sources[1].tile.children[2];
   localShareVisibility.listeners.click[0]();
   assert.equal(sources[1].tile.children[0].classList.contains("hidden"), true);
@@ -498,7 +675,17 @@ async function run() {
   );
   app.handleSignal("peer", { type: "share-ended", slot: sources[1].slot });
   assert.equal(app.remoteVideos.get("peer").has(`share-${sources[1].slot}`), false);
+  assert.equal(app.elements.get("video-grid").children.length, 1);
+  assert.equal(app.remoteShareAudio.get("peer").has(sources[1].slot), false, "ending a share should remove its associated remote audio");
+  app.handleSignal("peer", { type: "share-ended", slot: 0 });
   assert.equal(app.elements.get("video-grid").children.length, 0);
+
+  await app.stopScreenShare(sources[1].id);
+  app.setDisplayAudioAvailable(false);
+  await app.startScreenShare();
+  assert.equal(app.shareSources.size, 1, "video capture should continue when requested system audio is unavailable");
+  assert.equal(app.shareSources.values().next().value.audioTrack, null);
+  assert.match(app.screenShareNotice(), /aucun audio système/);
   assert.equal(app.isValidAvatarDataUrl("data:image/svg+xml;base64,AAAA"), false);
   assert.equal(app.isValidAvatarDataUrl("https://example.com/avatar.gif"), false);
 

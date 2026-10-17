@@ -17,6 +17,12 @@ const leaveBtn = document.getElementById("leave-btn");
 const videoGrid = document.getElementById("video-grid");
 const avatarStrip = document.getElementById("avatar-strip");
 const participantsList = document.getElementById("participants-list");
+const callLayout = document.querySelector(".call-layout");
+const participantsResizer = document.getElementById("participants-resizer");
+const settingsResizer = document.getElementById("settings-resizer");
+const participantsDockBtn = document.getElementById("participants-dock-btn");
+const settingsDockBtn = document.getElementById("settings-dock-btn");
+const showPseudonymsInput = document.getElementById("show-pseudonyms");
 const localVideo = document.getElementById("local-video");
 const localShares = document.getElementById("local-shares");
 const localAvatar = document.getElementById("local-avatar");
@@ -43,6 +49,7 @@ const audioFilterControls = [
 ];
 const screenResolutionInput = document.getElementById("screen-resolution");
 const screenFrameRateInput = document.getElementById("screen-frame-rate");
+const screenShareAudioInput = document.getElementById("screen-share-audio");
 const screenShareStatus = document.getElementById("screen-share-status");
 
 const supportedAudioConstraints = navigator.mediaDevices &&
@@ -65,11 +72,13 @@ const shareSources = new Map();
 const MAX_SCREEN_SHARES = 2;
 let nextShareId = 1;
 let pendingScreenShares = 0;
+let screenShareNotice = "";
 let isScreenSharing = false;
 let micEnabled = true;
 let camEnabled = true;
 let roomCode = null;
 let peerName = "";
+let localPeerId = "";
 let audioTrackCapabilities = null;
 let audioFiltersApplying = false;
 let audioSettingsNotice = "";
@@ -77,10 +86,12 @@ const peers = new Map();
 const audioSenders = new Map();
 const videoSenders = new Map();
 const shareSenders = new Map();
+const shareAudioSenders = new Map();
 const shareSetup = new Map();
 const remoteVideos = new Map();
 const remoteTiles = new Map();
 const remoteAudio = new Map();
+const remoteShareAudio = new Map();
 const participantRows = new Map();
 let localParticipantRow = null;
 let activeAudioDeviceId = "";
@@ -90,6 +101,10 @@ let switchingCameraDevice = false;
 const MAX_AVATAR_FILE_BYTES = 250 * 1024;
 const AVATAR_STORAGE_KEY = "webrtc-call-avatar-v1";
 const NAME_STORAGE_KEY = "webrtc-call-name-v1";
+const LAYOUT_STORAGE_KEY = "webrtc-call-layout-v1";
+const PSEUDONYMS_STORAGE_KEY = "webrtc-call-show-pseudonyms-v1";
+const DEFAULT_LAYOUT = { participantsWidth: 220, settingsWidth: 260, participantsDocked: false, settingsDocked: false };
+let layoutPreferences = { ...DEFAULT_LAYOUT };
 const allowedAvatarTypes = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 const avatarSignatures = {
   "image/png": (bytes) =>
@@ -421,9 +436,13 @@ function makeRoomLink(code = roomCode) {
   return url.toString();
 }
 
-function makeOverlayLink(code = roomCode) {
+function makeOverlayLink(code = roomCode, peerId = "") {
   const url = new URL("/overlay.html", window.location.origin);
-  if (code) url.hash = new URLSearchParams({ room: code }).toString();
+  if (code) {
+    const params = new URLSearchParams({ room: code });
+    if (peerId) params.set("peer", peerId);
+    url.hash = params.toString();
+  }
   return url.toString();
 }
 
@@ -447,6 +466,143 @@ function loadName() {
   } catch (error) {
     console.error("Impossible de charger le pseudo enregistré:", error);
   }
+}
+
+function clampPanelWidth(value, minimum, maximum) {
+  const width = Number(value);
+  return Number.isFinite(width) ? Math.min(maximum, Math.max(minimum, width)) : minimum;
+}
+
+function loadLayoutPreferences() {
+  let saved = {};
+  try {
+    saved = JSON.parse(localStorage.getItem(LAYOUT_STORAGE_KEY) || "{}");
+  } catch (error) {
+    console.error("Impossible de charger la disposition enregistrée:", error);
+  }
+  const layout = {
+    participantsWidth: clampPanelWidth(
+      saved.participantsWidth === undefined ? DEFAULT_LAYOUT.participantsWidth : saved.participantsWidth,
+      190,
+      360
+    ),
+    settingsWidth: clampPanelWidth(
+      saved.settingsWidth === undefined ? DEFAULT_LAYOUT.settingsWidth : saved.settingsWidth,
+      220,
+      380
+    ),
+    participantsDocked: saved.participantsDocked === true,
+    settingsDocked: saved.settingsDocked === true,
+  };
+  applyLayoutPreferences(layout);
+  return layout;
+}
+
+function saveLayoutPreferences() {
+  try {
+    localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(layoutPreferences));
+  } catch (error) {
+    console.error("Impossible d'enregistrer la disposition:", error);
+  }
+}
+
+function applyLayoutPreferences(layout = layoutPreferences) {
+  layoutPreferences = {
+    participantsWidth: clampPanelWidth(layout.participantsWidth, 190, 360),
+    settingsWidth: clampPanelWidth(layout.settingsWidth, 220, 380),
+    participantsDocked: layout.participantsDocked === true,
+    settingsDocked: layout.settingsDocked === true,
+  };
+  callLayout.style.setProperty(
+    "--participants-width",
+    `${layoutPreferences.participantsDocked ? 54 : layoutPreferences.participantsWidth}px`
+  );
+  callLayout.style.setProperty(
+    "--settings-width",
+    `${layoutPreferences.settingsDocked ? 54 : layoutPreferences.settingsWidth}px`
+  );
+  callLayout.classList.toggle("participants-docked", layoutPreferences.participantsDocked);
+  callLayout.classList.toggle("settings-docked", layoutPreferences.settingsDocked);
+  participantsDockBtn.textContent = layoutPreferences.participantsDocked ? "Déployer" : "Ancrer";
+  participantsDockBtn.title = layoutPreferences.participantsDocked
+    ? "Déployer le panneau depuis le bord gauche"
+    : "Ancrer le panneau au bord gauche";
+  participantsDockBtn.setAttribute("aria-pressed", String(layoutPreferences.participantsDocked));
+  settingsDockBtn.textContent = layoutPreferences.settingsDocked ? "Déployer" : "Ancrer";
+  settingsDockBtn.title = layoutPreferences.settingsDocked
+    ? "Déployer le panneau depuis le bord droit"
+    : "Ancrer le panneau au bord droit";
+  settingsDockBtn.setAttribute("aria-pressed", String(layoutPreferences.settingsDocked));
+}
+
+function resizePanelFromPointer(event, panelName, resizer) {
+  if (window.innerWidth <= 1000 || event.button !== 0) return;
+  event.preventDefault();
+  const startX = event.clientX;
+  const startWidth = panelName === "participants"
+    ? layoutPreferences.participantsWidth
+    : layoutPreferences.settingsWidth;
+  const direction = panelName === "participants" ? 1 : -1;
+  const minimum = panelName === "participants" ? 190 : 220;
+  const maximum = panelName === "participants" ? 360 : 380;
+  resizer.classList.add("dragging");
+  const move = (moveEvent) => {
+    const width = clampPanelWidth(startWidth + (moveEvent.clientX - startX) * direction, minimum, maximum);
+    if (panelName === "participants") layoutPreferences.participantsWidth = width;
+    else layoutPreferences.settingsWidth = width;
+    applyLayoutPreferences();
+  };
+  const end = () => {
+    resizer.classList.remove("dragging");
+    document.removeEventListener("pointermove", move);
+    document.removeEventListener("pointerup", end);
+    saveLayoutPreferences();
+  };
+  document.addEventListener("pointermove", move);
+  document.addEventListener("pointerup", end, { once: true });
+}
+
+function resizePanelFromKeyboard(event, panelName) {
+  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+  event.preventDefault();
+  const delta = event.key === "ArrowRight" ? 16 : -16;
+  if (panelName === "participants") {
+    layoutPreferences.participantsWidth = clampPanelWidth(
+      layoutPreferences.participantsWidth + delta,
+      190,
+      360
+    );
+  } else {
+    layoutPreferences.settingsWidth = clampPanelWidth(
+      layoutPreferences.settingsWidth - delta,
+      220,
+      380
+    );
+  }
+  applyLayoutPreferences();
+  saveLayoutPreferences();
+}
+
+function setPseudonymsVisible(visible, persist = true) {
+  showPseudonymsInput.checked = visible;
+  callScreen.classList.toggle("pseudos-hidden", !visible);
+  if (!persist) return;
+  try {
+    localStorage.setItem(PSEUDONYMS_STORAGE_KEY, String(visible));
+  } catch (error) {
+    console.error("Impossible d'enregistrer la préférence d'affichage des pseudos:", error);
+  }
+}
+
+function loadPseudonymPreference() {
+  let visible = true;
+  try {
+    const stored = localStorage.getItem(PSEUDONYMS_STORAGE_KEY);
+    if (stored === "false") visible = false;
+  } catch (error) {
+    console.error("Impossible de lire la préférence d'affichage des pseudos:", error);
+  }
+  setPseudonymsVisible(visible, false);
 }
 
 function isAudioFilterSupported(key) {
@@ -727,8 +883,16 @@ function createPeerConnection(peerId) {
 
   pc.ontrack = (event) => {
     if (event.track.kind === "audio") {
-      const audio = remoteAudio.get(peerId);
-      if (audio) audio.srcObject = new MediaStream([event.track]);
+      const peerShareAudioSenders = shareAudioSenders.get(peerId) || [];
+      const shareAudioSlot = event.transceiver
+        ? peerShareAudioSenders.indexOf(event.transceiver.sender)
+        : -1;
+      if (shareAudioSlot >= 0) {
+        attachRemoteShareAudio(peerId, shareAudioSlot, event.track);
+      } else {
+        const audio = remoteAudio.get(peerId);
+        if (audio) audio.srcObject = new MediaStream([event.track]);
+      }
       return;
     }
     if (event.track.kind !== "video") return;
@@ -751,7 +915,7 @@ function createPeerConnection(peerId) {
         extraVideo.muted = false;
         extraVideo.classList.add("screen-share");
         const label = document.createElement("span");
-        label.className = "video-label";
+        label.className = "video-label share-label";
         label.textContent = `Partage ${shareSlot + 1}`;
         const visibilityButton = document.createElement("button");
         visibilityButton.type = "button";
@@ -764,6 +928,7 @@ function createPeerConnection(peerId) {
           visibilityButton.setAttribute("aria-pressed", String(hidden));
         });
         tile.append(extraVideo, label, visibilityButton);
+        ensureRemoteShareAudioControls(peerId, shareSlot, tile);
         videoGrid.appendChild(tile);
         remoteTiles.get(peerId).push(tile);
         video = extraVideo;
@@ -782,6 +947,10 @@ function createPeerConnection(peerId) {
       video.srcObject = null;
       const currentVideos = remoteVideos.get(peerId);
       if (!currentVideos || video !== currentVideos.get(streamKey)) return;
+      if (shareSlot >= 0) {
+        removeRemoteShare(peerId, shareSlot);
+        return;
+      }
       currentVideos.delete(streamKey);
       const tile = video.closest(".video-tile");
       if (tile && tile !== remoteTiles.get(peerId)[0]) {
@@ -809,17 +978,84 @@ function createPeerConnection(peerId) {
   const peerShareSenders = Array.from({ length: MAX_SCREEN_SHARES }, () =>
     pc.addTransceiver("video", { direction: "sendrecv" }).sender
   );
+  const peerShareAudioSenders = Array.from({ length: MAX_SCREEN_SHARES }, () =>
+    pc.addTransceiver("audio", { direction: "sendrecv" }).sender
+  );
 
   peers.set(peerId, pc);
   audioSenders.set(peerId, audioSender);
   videoSenders.set(peerId, videoSender);
   shareSenders.set(peerId, peerShareSenders);
-  shareSetup.set(peerId, Promise.all(shareSources.size
-    ? Array.from(shareSources.values()).map((source) =>
-    peerShareSenders[source.slot].replaceTrack(source.track)
-    )
-    : []));
+  shareAudioSenders.set(peerId, peerShareAudioSenders);
+  shareSetup.set(peerId, Promise.all(Array.from(shareSources.values()).flatMap((source) => [
+    peerShareSenders[source.slot].replaceTrack(source.track),
+    peerShareAudioSenders[source.slot].replaceTrack(source.audioTrack || null),
+  ])));
   return pc;
+}
+
+function attachRemoteShareAudio(peerId, slot, track) {
+  let peerAudios = remoteShareAudio.get(peerId);
+  if (!peerAudios) {
+    peerAudios = new Map();
+    remoteShareAudio.set(peerId, peerAudios);
+  }
+  let shareAudio = peerAudios.get(slot);
+  if (!shareAudio) {
+    const audio = document.createElement("audio");
+    audio.autoplay = true;
+    audio.playsInline = true;
+    audio.volume = 1;
+    audio.hidden = true;
+    shareAudio = { audio, controls: null };
+    peerAudios.set(slot, shareAudio);
+  }
+  const mediaStream = new MediaStream([track]);
+  shareAudio.audio.srcObject = mediaStream;
+  const video = remoteVideos.get(peerId)?.get(`share-${slot}`);
+  const tile = video && video.closest(".share-tile");
+  if (tile) ensureRemoteShareAudioControls(peerId, slot, tile);
+  track.addEventListener("ended", () => {
+    if (shareAudio.audio.srcObject !== mediaStream) return;
+    shareAudio.audio.srcObject = null;
+    if (shareAudio.controls) shareAudio.controls.remove();
+    const current = remoteShareAudio.get(peerId);
+    if (current && current.get(slot) === shareAudio) {
+      current.delete(slot);
+      if (current.size === 0) remoteShareAudio.delete(peerId);
+    }
+  }, { once: true });
+}
+
+function ensureRemoteShareAudioControls(peerId, slot, tile) {
+  const shareAudio = remoteShareAudio.get(peerId)?.get(slot);
+  if (!shareAudio || shareAudio.controls) return;
+  const controls = document.createElement("div");
+  controls.className = "share-audio-controls";
+  const label = document.createElement("label");
+  label.textContent = "Audio";
+  const muteButton = document.createElement("button");
+  muteButton.type = "button";
+  muteButton.textContent = "Couper";
+  muteButton.setAttribute("aria-pressed", "false");
+  muteButton.addEventListener("click", () => {
+    shareAudio.audio.muted = !shareAudio.audio.muted;
+    muteButton.textContent = shareAudio.audio.muted ? "Réactiver" : "Couper";
+    muteButton.setAttribute("aria-pressed", String(shareAudio.audio.muted));
+  });
+  const volume = document.createElement("input");
+  volume.type = "range";
+  volume.min = "0";
+  volume.max = "1";
+  volume.step = "0.05";
+  volume.value = String(shareAudio.audio.volume);
+  volume.setAttribute("aria-label", `Volume de l'audio du partage ${slot + 1}`);
+  volume.addEventListener("input", () => {
+    shareAudio.audio.volume = Number(volume.value);
+  });
+  controls.append(label, muteButton, volume, shareAudio.audio);
+  tile.appendChild(controls);
+  shareAudio.controls = controls;
 }
 
 function addRemoteVideo(peerId, name) {
@@ -872,6 +1108,7 @@ function removePeer(peerId) {
     videoSenders.delete(peerId);
     shareSenders.delete(peerId);
     shareSetup.delete(peerId);
+    shareAudioSenders.delete(peerId);
   }
   (remoteTiles.get(peerId) || []).forEach((tile) => tile.remove());
   remoteTiles.delete(peerId);
@@ -882,6 +1119,14 @@ function removePeer(peerId) {
   const audio = remoteAudio.get(peerId);
   if (audio) audio.srcObject = null;
   remoteAudio.delete(peerId);
+  const shareAudio = remoteShareAudio.get(peerId);
+  if (shareAudio) {
+    shareAudio.forEach(({ audio, controls }) => {
+      audio.srcObject = null;
+      if (controls) controls.remove();
+    });
+  }
+  remoteShareAudio.delete(peerId);
   const participantRow = participantRows.get(peerId);
   if (participantRow) participantRow.remove();
   participantRows.delete(peerId);
@@ -1032,10 +1277,35 @@ function createParticipantRow(peerId, name, audio = null) {
   const row = document.createElement("div");
   row.className = "participant-row";
   row.dataset.peerId = peerId;
+  const nameButton = document.createElement("button");
+  nameButton.type = "button";
+  nameButton.className = "participant-name-button";
+  nameButton.setAttribute("aria-expanded", "false");
   const nameLabel = document.createElement("span");
   nameLabel.className = "participant-name";
   nameLabel.textContent = name || "Anonyme";
-  row.appendChild(nameLabel);
+  nameButton.appendChild(nameLabel);
+  const menu = document.createElement("div");
+  menu.className = "participant-overlay-menu hidden";
+  const ownOverlayButton = document.createElement("button");
+  ownOverlayButton.type = "button";
+  ownOverlayButton.textContent = "Copier lien OBS individuel";
+  ownOverlayButton.disabled = !peerId;
+  ownOverlayButton.addEventListener("click", () =>
+    copyText(makeOverlayLink(roomCode, peerId), ownOverlayButton, "Lien individuel copié")
+  );
+  const groupOverlayButton = document.createElement("button");
+  groupOverlayButton.type = "button";
+  groupOverlayButton.textContent = "Copier lien OBS du groupe";
+  groupOverlayButton.addEventListener("click", () =>
+    copyText(makeOverlayLink(), groupOverlayButton, "Lien de groupe copié")
+  );
+  menu.append(ownOverlayButton, groupOverlayButton);
+  nameButton.addEventListener("click", () => {
+    const isOpen = menu.classList.toggle("hidden");
+    nameButton.setAttribute("aria-expanded", String(!isOpen));
+  });
+  row.append(nameButton, menu);
 
   if (audio) {
     const muteButton = document.createElement("button");
@@ -1065,7 +1335,7 @@ function createParticipantRow(peerId, name, audio = null) {
 
 function ensureLocalParticipantRow() {
   if (!localParticipantRow) {
-    localParticipantRow = createParticipantRow("local", `${peerName || "Toi"} (Toi)`);
+    localParticipantRow = createParticipantRow(localPeerId, `${peerName || "Toi"} (Toi)`);
   }
   if (localParticipantRow.parentNode !== participantsList) {
     participantsList.appendChild(localParticipantRow);
@@ -1139,18 +1409,26 @@ async function handleSignal(from, data) {
 
 function removeRemoteShare(peerId, slot) {
   const videos = remoteVideos.get(peerId);
-  if (!videos) return;
   const key = `share-${slot}`;
-  const video = videos.get(key);
-  if (!video) return;
-  videos.delete(key);
-  video.srcObject = null;
-  const tile = video.closest(".video-tile");
+  const video = videos && videos.get(key);
+  if (video) {
+    videos.delete(key);
+    video.srcObject = null;
+  }
+  const tile = video && video.closest(".video-tile");
   const tiles = remoteTiles.get(peerId);
   if (tile && tiles && tile !== tiles[0]) {
     tile.remove();
     const tileIndex = tiles.indexOf(tile);
     if (tileIndex !== -1) tiles.splice(tileIndex, 1);
+  }
+  const peerAudios = remoteShareAudio.get(peerId);
+  const shareAudio = peerAudios && peerAudios.get(slot);
+  if (shareAudio) {
+    shareAudio.audio.srcObject = null;
+    if (shareAudio.controls) shareAudio.controls.remove();
+    peerAudios.delete(slot);
+    if (peerAudios.size === 0) remoteShareAudio.delete(peerId);
   }
 }
 
@@ -1175,7 +1453,7 @@ function refreshScreenShareStatus(notice = "") {
   const state = shareSources.size
     ? `${shareSources.size}/${MAX_SCREEN_SHARES} partages actifs. Limite demandée : ${resolution}p / ${frameRate} FPS.`
     : `Prochain partage : maximum ${resolution}p / ${frameRate} FPS.`;
-  screenShareStatus.textContent = `${state} ${notice}`.trim();
+  screenShareStatus.textContent = `${state} ${notice || screenShareNotice}`.trim();
   screenBtn.disabled = shareSources.size + pendingScreenShares >= MAX_SCREEN_SHARES;
   screenBtn.title = shareSources.size + pendingScreenShares >= MAX_SCREEN_SHARES
     ? `Maximum ${MAX_SCREEN_SHARES} partages simultanés`
@@ -1217,14 +1495,17 @@ async function startScreenShare() {
   refreshScreenShareStatus();
   let capturedStream = null;
   let source = null;
+  let senderCleanupFailed = false;
+  const audioRequested = screenShareAudioInput.checked;
   try {
     const stream = await navigator.mediaDevices.getDisplayMedia({
       video: { ...getScreenTrackConstraints(), cursor: "always" },
-      audio: false,
+      audio: audioRequested,
     });
     capturedStream = stream;
 
     const screenTrack = stream.getVideoTracks()[0];
+    const audioTrack = stream.getAudioTracks()[0] || null;
     if (!screenTrack) {
       stream.getTracks().forEach((track) => track.stop());
       throw new Error("Aucune piste vidéo disponible pour le partage.");
@@ -1247,6 +1528,7 @@ async function startScreenShare() {
     preview.playsInline = true;
     preview.srcObject = stream;
     const label = document.createElement("span");
+    label.className = "share-label";
     label.textContent = `Partage ${slot + 1}`;
     const stopButton = document.createElement("button");
     stopButton.type = "button";
@@ -1265,29 +1547,77 @@ async function startScreenShare() {
     tile.append(preview, label, visibilityButton, stopButton);
     localShares.appendChild(tile);
 
-    source = { id, slot, stream, track: screenTrack, tile };
+    source = { id, slot, stream, track: screenTrack, audioTrack, tile };
     shareSources.set(id, source);
     await replaceSenderTracks(
       Array.from(shareSenders.values(), (senders) => senders[slot]),
       screenTrack,
       null
     );
+    await replaceSenderTracks(
+      Array.from(shareAudioSenders.values(), (senders) => senders[slot]),
+      audioTrack,
+      null
+    );
 
     isScreenSharing = true;
+    screenShareNotice = audioRequested && !audioTrack
+      ? "Vidéo partagée, mais ce navigateur n'a fourni aucun audio système."
+      : audioTrack
+        ? "Audio système transmis pour ce partage."
+        : "";
     updateControls();
     refreshScreenShareStatus();
 
     screenTrack.onended = () => {
       stopScreenShare(id);
     };
+    if (audioTrack) {
+      audioTrack.addEventListener("ended", () => {
+        if (shareSources.get(id) !== source || source.audioTrack !== audioTrack) return;
+        source.audioTrack = null;
+        replaceSenderTracks(
+          Array.from(shareAudioSenders.values(), (senders) => senders[slot]),
+          null,
+          audioTrack
+        ).then(() => {
+          screenShareNotice = "La piste audio système s'est arrêtée; la vidéo continue.";
+          refreshScreenShareStatus();
+        }).catch((error) => {
+          console.error("Erreur d'arrêt de l'audio du partage:", error);
+          refreshScreenShareStatus("La piste audio s'est arrêtée, mais un pair peut encore la recevoir.");
+        });
+      }, { once: true });
+    }
   } catch (err) {
     if (source) {
       shareSources.delete(source.id);
+      try {
+        await replaceSenderTracks(
+          Array.from(shareSenders.values(), (senders) => senders[source.slot]),
+          null,
+          source.track
+        );
+        await replaceSenderTracks(
+          Array.from(shareAudioSenders.values(), (senders) => senders[source.slot]),
+          null,
+          source.audioTrack
+        );
+      } catch (cleanupError) {
+        console.error("Erreur de nettoyage du partage incomplet:", cleanupError);
+        senderCleanupFailed = true;
+      }
       source.tile.remove();
     }
     if (capturedStream) capturedStream.getTracks().forEach((track) => track.stop());
     console.error("Erreur partage ecran:", err);
-    refreshScreenShareStatus(`Partage impossible : ${err.message}`);
+    screenShareNotice = audioRequested
+      ? `Capture impossible avec l'audio demandé (${err.message}). Désactive l'audio ou utilise un navigateur qui le prend en charge.`
+      : `Partage impossible : ${err.message}`;
+    if (senderCleanupFailed) {
+      screenShareNotice += " Une piste distante peut nécessiter un nouvel essai.";
+    }
+    refreshScreenShareStatus();
   } finally {
     pendingScreenShares -= 1;
     refreshScreenShareStatus();
@@ -1302,6 +1632,11 @@ async function stopScreenShare(sourceId) {
     .filter(Boolean);
   try {
     await replaceSenderTracks(senders, null, source.track);
+    await replaceSenderTracks(
+      Array.from(shareAudioSenders.values(), (peerSenders) => peerSenders[source.slot]).filter(Boolean),
+      null,
+      source.audioTrack
+    );
   } catch (error) {
     console.error("Erreur d'arrêt du partage distant:", error);
     refreshScreenShareStatus("Une source distante n'a pas pu être arrêtée correctement.");
@@ -1313,6 +1648,7 @@ async function stopScreenShare(sourceId) {
     socket.emit("signal", { to: peerId, data: { type: "share-ended", slot: source.slot } });
   });
   source.stream.getTracks().forEach((track) => track.stop());
+  if (!shareSources.size) screenShareNotice = "";
   isScreenSharing = shareSources.size > 0;
   updateControls();
   refreshScreenShareStatus();
@@ -1350,6 +1686,8 @@ function leaveCall() {
   peers.clear();
   audioSenders.clear();
   videoSenders.clear();
+  shareSenders.clear();
+  shareAudioSenders.clear();
   document.querySelectorAll(".video-tile:not(#local-tile)").forEach((t) => t.remove());
 
   if (localStream) {
@@ -1362,11 +1700,13 @@ function leaveCall() {
     source.tile.remove();
   });
   shareSources.clear();
+  screenShareNotice = "";
   shareSetup.clear();
   shareSenders.clear();
   remoteVideos.clear();
   remoteTiles.clear();
   remoteAudio.clear();
+  remoteShareAudio.clear();
   participantRows.clear();
   participantsList.replaceChildren();
   localParticipantRow = null;
@@ -1385,6 +1725,7 @@ function leaveCall() {
 
   socket.emit("leave-room");
   roomCode = null;
+  localPeerId = "";
   callScreen.classList.add("hidden");
   homeScreen.classList.remove("hidden");
 }
@@ -1418,6 +1759,7 @@ function registerForRoom(code) {
   socket.emit("join-room", { roomCode: code, peerName: peerName }, (response) => {
     if (response.success) {
       roomCode = code;
+      localPeerId = response.peerId;
 
       response.otherPeers.forEach((p) => {
         addRemoteVideo(p.id, p.name);
@@ -1497,6 +1839,31 @@ copyOverlayLinkBtn.addEventListener("click", () => {
 });
 
 nameInput.addEventListener("input", saveName);
+showPseudonymsInput.addEventListener("change", () =>
+  setPseudonymsVisible(showPseudonymsInput.checked)
+);
+participantsDockBtn.addEventListener("click", () => {
+  layoutPreferences.participantsDocked = !layoutPreferences.participantsDocked;
+  applyLayoutPreferences();
+  saveLayoutPreferences();
+});
+settingsDockBtn.addEventListener("click", () => {
+  layoutPreferences.settingsDocked = !layoutPreferences.settingsDocked;
+  applyLayoutPreferences();
+  saveLayoutPreferences();
+});
+participantsResizer.addEventListener("pointerdown", (event) =>
+  resizePanelFromPointer(event, "participants", participantsResizer)
+);
+settingsResizer.addEventListener("pointerdown", (event) =>
+  resizePanelFromPointer(event, "settings", settingsResizer)
+);
+participantsResizer.addEventListener("keydown", (event) =>
+  resizePanelFromKeyboard(event, "participants")
+);
+settingsResizer.addEventListener("keydown", (event) =>
+  resizePanelFromKeyboard(event, "settings")
+);
 
 socket.on("connect", () => {
   console.log("Connecte au serveur de signalisation");
@@ -1520,5 +1887,7 @@ socket.on("signal", ({ from, data }) => {
 refreshAudioFilterControls();
 loadAvatarProfile();
 loadName();
+loadLayoutPreferences();
+loadPseudonymPreference();
 joinCodeInput.value = getRoomCodeFromHash();
 refreshScreenShareStatus();
