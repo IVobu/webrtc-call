@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebRTC Call — Appel P2P</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="home-screen" class="screen">
+  <div class="card">
+    <h1>WebRTC Call</h1>
+    <p class="subtitle">Appel audio/vidéo P2P — sans inscription, sans serveur relais</p>
+
+    <div class="form-group">
+      <label for="name-input">Ton nom</label>
+      <input type="text" id="name-input" placeholder="Ton pseudo" maxlength="20">
+    </div>
+
+    <button id="create-btn" class="btn btn-primary">Creer un appel</button>
+
+    <div class="divider"><span>ou</span></div>
+
+    <div class="form-group">
+      <label for="join-code-input">Code de salle</label>
+      <input type="text" id="join-code-input" placeholder="Ex: abc123" maxlength="10">
+    </div>
+
+    <button id="join-btn" class="btn btn-secondary">Rejoindre un appel</button>
+
+    <p id="home-error" class="error"></p>
+  </div>
+</div>
+
+<div id="call-screen" class="screen hidden">
+  <div class="call-header">
+    <span id="room-label">Salle: </span>
+    <button id="copy-link-btn" class="btn btn-small">Copier le lien</button>
+    <button id="leave-btn" class="btn btn-small btn-danger">Quitter</button>
+  </div>
+
+  <div id="video-grid" class="video-grid">
+    <div class="video-tile" id="local-tile">
+      <video id="local-video" autoplay muted playsinline></video>
+      <span class="video-label" id="local-label">Toi</span>
+      <div class="video-controls">
+        <button id="mic-btn" class="ctrl-btn active" title="Micro">Mic</button>
+        <button id="cam-btn" class="ctrl-btn active" title="Cam">Cam</button>
+        <button id="screen-btn" class="ctrl-btn" title="Partager l'ecran">Screen</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="participants-bar" class="participants-bar">
+    <span id="participant-count"></span>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="client.js"></script>
+</body>
+</html>
