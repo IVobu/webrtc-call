@@ -7,4 +7,4 @@ services:
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /
-    autoDeploy: false
+    autoDeployTrigger: off
