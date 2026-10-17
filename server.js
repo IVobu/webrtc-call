@@ -188,6 +188,7 @@ io.on("connection", (socket) => {
 
   socket.on("update-profile", (payload, callback) => {
     if (!currentRoom || !peerId || !payload || typeof payload !== "object") return;
+    if (!broadcastLimiter()) return;
     const room = rooms.get(currentRoom);
     const peer = room && room.peers.get(peerId);
     if (!peer) return;
