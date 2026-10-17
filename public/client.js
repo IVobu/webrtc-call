@@ -379,7 +379,7 @@ function updateTile(peerId) {
   // Partage d'écran : affiché dans la tuile de la personne, puis retour à l'état précédent.
   const camStream = isLocal ? localStream : info.camStream;
   tile.classList.remove("is-sharing");
-  tile.classList.toggle("is-camera-preview", !!(isLocal && camEnabled && camStream));
+  tile.classList.toggle("is-camera-preview", !!((isLocal ? camEnabled : info.cameraEnabled) && camStream));
   video.classList.remove("screen-share");
   if (video.srcObject !== camStream) video.srcObject = camStream || null;
 
