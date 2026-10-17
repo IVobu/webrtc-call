@@ -625,6 +625,19 @@ function routeRemoteStream(peerId, stream) {
   if (isScreen) {
     info.screenStreams.set(stream.id, stream);
     info.screenStream = stream;
+    for (const track of stream.getVideoTracks()) {
+      track.addEventListener("ended", () => {
+        if (!stream.getVideoTracks().every((videoTrack) => videoTrack.readyState === "ended")) return;
+        info.screenStreams.delete(stream.id);
+        info.screenStreamIds.delete(stream.id);
+        screenAudioSettings.delete(stream.id);
+        document.getElementById(`screen-share-${stream.id}`)?.remove();
+        info.screenActive = info.screenStreamIds.size > 0;
+        info.screenStreamId = info.screenStreamIds.values().next().value || null;
+        info.screenStream = info.screenStreams.values().next().value || null;
+        updateStageEmpty();
+      }, { once: true });
+    }
     renderScreenShareTile(peerId, stream, false);
   } else {
     attachCamStream(peerId, stream);
@@ -939,6 +952,7 @@ async function startScreenShare() {
       sendSignal(peerId, { type: "screen", sharing: true, streamId: stream.id });
       applyScreenToPeer(state, stream);
     }
+    await applyLocalMediaSettings();
     updateControls();
   } catch (err) { console.error("Erreur partage écran:", err); }
 }
