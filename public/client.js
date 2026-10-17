@@ -972,6 +972,7 @@ function leaveCall() {
   peers.clear();
   peerInfo.clear();
   peerAudioSettings.clear();
+  peerAudioSettings.clear();
   document.querySelectorAll(".video-tile:not(#local-tile)").forEach((t) => {
     t.querySelectorAll("video, audio").forEach((el) => (el.srcObject = null));
     t.remove();
