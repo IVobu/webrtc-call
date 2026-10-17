@@ -111,6 +111,51 @@
         </label>
         <button id="settings-btn-secondary" class="btn btn-secondary btn-small">Réglages audio et avatar</button>
       </section>
+      <details class="panel-section personal-settings" open>
+        <summary>Mes paramètres</summary>
+        <label class="panel-field">
+          <span>Mon pseudonyme</span>
+          <div class="inline-field">
+            <input id="rename-input" type="text" maxlength="20" placeholder="Ton pseudo">
+            <button id="rename-save" class="btn btn-primary btn-small">OK</button>
+          </div>
+        </label>
+        <label class="setting-row compact-setting">
+          <input id="echo-cancel-toggle" type="checkbox" checked>
+          <span>Annulation de l'écho</span>
+        </label>
+        <label class="setting-row compact-setting">
+          <input id="noise-suppression-toggle" type="checkbox" checked>
+          <span>Réduction du bruit</span>
+        </label>
+        <label class="panel-field">
+          <span>Qualité vidéo locale</span>
+          <select id="video-quality-select">
+            <option value="360">Économie · 360p</option>
+            <option value="720" selected>Équilibrée · 720p</option>
+            <option value="1080">Élevée · 1080p</option>
+          </select>
+        </label>
+        <label class="panel-field">
+          <span>Images par seconde</span>
+          <select id="video-fps-select">
+            <option value="10">10 FPS · minimum</option>
+            <option value="15">15 FPS · économie</option>
+            <option value="24" selected>24 FPS · équilibré</option>
+            <option value="30">30 FPS · fluide</option>
+          </select>
+        </label>
+        <label class="panel-field">
+          <span>Avatar au repos (URL)</span>
+          <input id="panel-avatar-idle" type="url" placeholder="https://…/repos.png">
+        </label>
+        <label class="panel-field">
+          <span>Avatar en parlant (URL)</span>
+          <input id="panel-avatar-talking" type="url" placeholder="https://…/parle.png">
+        </label>
+        <button id="avatar-save" class="btn btn-secondary btn-small">Appliquer les avatars</button>
+        <p class="panel-help">Les filtres et la qualité dépendent des capacités du navigateur et du périphérique.</p>
+      </details>
     </aside>
   </div>
 
