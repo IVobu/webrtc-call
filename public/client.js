@@ -20,7 +20,6 @@ const roomLabel = $("room-label");
 const settingsBtn = $("settings-btn");
 const chatBtn = $("chat-btn");
 const chatBadge = $("chat-badge");
-const audioUnlockBtn = $("audio-unlock");
 const copyLinkBtn = $("copy-link-btn");
 const leaveBtn = $("leave-btn");
 const videoGrid = $("video-grid");
@@ -135,8 +134,9 @@ function getInfo(peerId) {
 }
 
 function generateRoomCode() {
-  const chars = "abcdefghjkmnpqrstuvwxyz23456789";
-  const bytes = new Uint8Array(8);
+  // Même format qu'à l'origine (6 caractères a-z0-9), mais tiré de façon sécurisée.
+  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+  const bytes = new Uint8Array(6);
   crypto.getRandomValues(bytes);
   return Array.from(bytes, (b) => chars[b % chars.length]).join("");
 }
@@ -190,7 +190,7 @@ async function getLocalStream() {
   }
 
   if (!localStream) {
-    alert("Impossible d'accéder au micro/caméra. Tu rejoins sans média (tu pourras voir et entendre les autres). Vérifie les permissions.");
+    alert("Impossible d'acceder au micro/camera. Verifie les permissions.");
     return false;
   }
 
@@ -342,11 +342,34 @@ function updateParticipantCount() {
   participantCount.textContent = `${count} participant${count > 1 ? "s" : ""}`;
 }
 
+let audioUnlockBtn = null;
+
+function showAudioPrompt() {
+  if (audioUnlockBtn) return;
+  audioUnlockBtn = document.createElement("button");
+  audioUnlockBtn.className = "btn btn-small btn-primary";
+  audioUnlockBtn.textContent = "Activer le son";
+  audioUnlockBtn.title = "Le navigateur a bloqué le son";
+  audioUnlockBtn.addEventListener("click", () => {
+    document.querySelectorAll("#video-grid audio, #video-grid video").forEach((el) => playMedia(el));
+    if (audioContext && audioContext.state === "suspended") audioContext.resume().catch(() => {});
+    hideAudioPrompt();
+  });
+  settingsBtn.parentNode.insertBefore(audioUnlockBtn, settingsBtn);
+}
+
+function hideAudioPrompt() {
+  if (audioUnlockBtn) {
+    audioUnlockBtn.remove();
+    audioUnlockBtn = null;
+  }
+}
+
 function playMedia(el) {
   const p = el.play();
   if (p && p.catch) {
     p.catch((err) => {
-      if (err && err.name === "NotAllowedError") audioUnlockBtn.classList.remove("hidden");
+      if (err && err.name === "NotAllowedError") showAudioPrompt();
     });
   }
 }
@@ -696,16 +719,17 @@ function formatTime(ts) {
 }
 
 function updateChatBadge() {
+  if (!chatBadge) return;
   chatBadge.textContent = unreadCount > 9 ? "9+" : String(unreadCount);
   chatBadge.classList.toggle("hidden", unreadCount === 0);
 }
 
 function isChatOpen() {
-  return !chatPanel.classList.contains("hidden");
+  return !!chatPanel && !chatPanel.classList.contains("hidden");
 }
 
 function addChatMessage(msg, silent) {
-  if (!msg || typeof msg.text !== "string") return;
+  if (!chatMessages || !msg || typeof msg.text !== "string") return;
 
   const mine = msg.from === socket.id;
   const row = document.createElement("div");
@@ -731,6 +755,7 @@ function addChatMessage(msg, silent) {
 }
 
 function openChat() {
+  if (!chatPanel) return;
   chatPanel.classList.remove("hidden");
   unreadCount = 0;
   updateChatBadge();
@@ -739,10 +764,11 @@ function openChat() {
 }
 
 function closeChat() {
-  chatPanel.classList.add("hidden");
+  if (chatPanel) chatPanel.classList.add("hidden");
 }
 
 function sendChat() {
+  if (!chatInput) return;
   const text = chatInput.value.trim();
   if (!text || !roomCode) return;
   socket.emit("chat", text);
@@ -787,11 +813,11 @@ function leaveCall() {
   if (socket.connected) socket.emit("leave-room");
   roomCode = null;
 
-  chatMessages.textContent = "";
+  if (chatMessages) chatMessages.textContent = "";
   closeChat();
   unreadCount = 0;
   updateChatBadge();
-  audioUnlockBtn.classList.add("hidden");
+  hideAudioPrompt();
 
   callScreen.classList.add("hidden");
   homeScreen.classList.remove("hidden");
@@ -861,7 +887,7 @@ async function joinRoom(code) {
   peerName = nameInput.value.trim() || "Anonyme";
   await iceReady;
   await getLocalStream();
-  registerForRoom(code.toLowerCase());
+  registerForRoom(code);
 }
 
 // ---------- Avatars ----------
@@ -926,21 +952,17 @@ settingsModal.addEventListener("click", (e) => {
   if (e.target === settingsModal) settingsModal.classList.add("hidden");
 });
 
-chatBtn.addEventListener("click", () => (isChatOpen() ? closeChat() : openChat()));
-chatClose.addEventListener("click", closeChat);
-chatSend.addEventListener("click", sendChat);
-chatInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey) {
-    e.preventDefault();
-    sendChat();
-  }
-});
-
-audioUnlockBtn.addEventListener("click", () => {
-  document.querySelectorAll("#video-grid audio, #video-grid video").forEach((el) => playMedia(el));
-  if (audioContext && audioContext.state === "suspended") audioContext.resume().catch(() => {});
-  audioUnlockBtn.classList.add("hidden");
-});
+if (chatBtn && chatPanel) {
+  chatBtn.addEventListener("click", () => (isChatOpen() ? closeChat() : openChat()));
+  chatClose.addEventListener("click", closeChat);
+  chatSend.addEventListener("click", sendChat);
+  chatInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendChat();
+    }
+  });
+}
 
 createBtn.addEventListener("click", createRoom);
 joinBtn.addEventListener("click", () => joinRoom(joinCodeInput.value.trim()));
@@ -953,7 +975,7 @@ screenBtn.addEventListener("click", toggleScreenShare);
 copyLinkBtn.addEventListener("click", () => {
   const url = `${window.location.origin}/?room=${roomCode}`;
   const done = () => {
-    copyLinkBtn.textContent = "Copié !";
+    copyLinkBtn.textContent = "Copie!";
     setTimeout(() => (copyLinkBtn.textContent = "Copier le lien"), 2000);
   };
   if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -966,13 +988,6 @@ copyLinkBtn.addEventListener("click", () => {
 // ---------- Socket ----------
 socket.on("connect", () => {
   console.log("Connecté au serveur de signalisation");
-});
-
-socket.on("disconnect", () => {
-  if (roomCode) {
-    leaveCall();
-    homeError.textContent = "Connexion au serveur perdue. Rejoins l'appel à nouveau.";
-  }
 });
 
 socket.on("peer-joined", ({ id, name, avatar }) => {

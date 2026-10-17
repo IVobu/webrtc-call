@@ -24,7 +24,7 @@
 
     <div class="form-group">
       <label for="join-code-input">Code de salle</label>
-      <input type="text" id="join-code-input" placeholder="Ex: abc123" maxlength="32">
+      <input type="text" id="join-code-input" placeholder="Ex: abc123" maxlength="10">
     </div>
 
     <button id="join-btn" class="btn btn-secondary">Rejoindre un appel</button>
@@ -50,7 +50,6 @@
 <div id="call-screen" class="screen hidden">
   <div class="call-header">
     <span id="room-label">Salle: </span>
-    <button id="audio-unlock" class="btn btn-small btn-primary hidden" title="Le navigateur a bloqué le son">Activer le son</button>
     <button id="settings-btn" class="btn btn-small" title="Réglages">Réglages</button>
     <button id="chat-btn" class="btn btn-small" title="Chat">Chat <span id="chat-badge" class="badge hidden">0</span></button>
     <button id="copy-link-btn" class="btn btn-small">Copier le lien</button>

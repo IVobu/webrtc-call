@@ -4,7 +4,6 @@ const { Server } = require("socket.io");
 const path = require("path");
 
 const PORT = process.env.PORT || 3000;
-const MAX_PEERS = parseInt(process.env.MAX_PEERS || "8", 10);
 const MAX_NAME = 20;
 const MAX_CHAT = 500;
 const MAX_CHAT_HISTORY = 50;
@@ -136,20 +135,14 @@ io.on("connection", (socket) => {
     if (typeof callback !== "function") return;
     const { roomCode, peerName, avatar } = payload || {};
 
-    const code = String(roomCode || "").trim().toLowerCase();
-    if (!/^[a-z0-9_-]{6,32}$/.test(code)) {
-      return callback({
-        success: false,
-        error: "Code de salle invalide (6 à 32 caractères : lettres, chiffres, - ou _).",
-      });
+    const code = String(roomCode || "").trim();
+    if (!code || code.length < 3) {
+      return callback({ success: false, error: "Code de salle invalide." });
     }
 
     if (currentRoom) handleLeave();
 
     const room = getRoom(code);
-    if (room.peers.size >= MAX_PEERS) {
-      return callback({ success: false, error: "Cette salle est pleine." });
-    }
 
     const name = cleanName(peerName);
     const cleanedAvatar = cleanAvatar(avatar);
@@ -248,17 +241,13 @@ io.on("connection", (socket) => {
       cleanupRoom(code);
     }
     socket.leave(code);
-    console.log(`[-] ${peerId} a quitté ${code}`);
+    console.log(`[-] ${peerId} a quitte ${code}`);
     currentRoom = null;
     peerId = null;
   }
 });
 
 server.listen(PORT, () => {
-  console.log(`\n  Serveur WebRTC démarré sur http://localhost:${PORT}`);
-  console.log(`  Ouvre cette URL dans ton navigateur pour créer un appel.`);
-  if (!process.env.TURN_URL) {
-    console.log(`  (Aucun serveur TURN configuré : certaines connexions distantes peuvent échouer.)`);
-  }
-  console.log("");
+  console.log(`\n  Serveur WebRTC demarre sur http://localhost:${PORT}`);
+  console.log(`  Ouvre cette URL dans ton navigateur pour creer un appel.\n`);
 });

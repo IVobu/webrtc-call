@@ -85,20 +85,16 @@ Les réglages et les images sont sauvegardés dans le `localStorage` du navigate
 ## Chat
 
 Le bouton **Chat** (à côté de « Réglages ») ouvre un petit panneau de discussion. Les 50 derniers
-messages sont conservés tant que la salle existe, donc un nouvel arrivant voit l'historique récent.
-Les messages sont limités à 500 caractères et le nom affiché est fourni par le serveur.
+messages sont conservés tant que la salle existe. Messages limités à 500 caractères.
 
-## Serveur TURN (recommandé)
+## Serveur TURN (optionnel, recommandé)
 
-Sans TURN, certaines connexions (4G, réseaux d'entreprise, NAT stricts) échouent : on ne voit ni
-n'entend l'autre personne. Le serveur expose `/ice-config` et lit ces variables d'environnement :
+Sans TURN, certaines connexions (4G, réseaux d'entreprise, NAT stricts) échouent. Le serveur expose
+`/ice-config` et lit ces variables d'environnement :
 
 ```bash
 TURN_URL="turn:mon-serveur:3478" TURN_USERNAME=user TURN_CREDENTIAL=secret node server.js
 ```
-
-(`TURN_URL` accepte plusieurs URL séparées par des virgules.) Tu peux héberger ton propre serveur
-avec coturn ou utiliser un service TURN tiers.
 
 ## Partage d'écran
 
@@ -111,7 +107,7 @@ l'état précédent à la fin du partage.
 | Fichier | Rôle |
 |---------|------|
 | `server.js` | Serveur Express + Socket.io (signalisation + broadcast) |
-| `public/index.html` | Interface utilisateur (appel, réglages, chat) |
+| `public/index.html` | Interface utilisateur |
 | `public/style.css` | Styles |
 | `public/client.js` | Logique WebRTC (connexions P2P, médias, avatar réactif) |
 
@@ -119,4 +115,4 @@ l'état précédent à la fin du partage.
 
 - 2-6 participants recommandés (architecture maillage P2P)
 - Nécessite HTTPS pour fonctionner hors localhost (fourni automatiquement par Cloudflare/ngrok)
-- Pas d'enregistrement
+- Pas d'enregistrement ni de chat texte
