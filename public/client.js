@@ -699,6 +699,7 @@ function createPeerConnection(peerId, isOfferer) {
     }
   }
 
+  applyLocalMediaSettings();
   return state;
 }
 
