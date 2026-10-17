@@ -2,16 +2,21 @@
 
 Application d'appel audio/vidéo P2P avec partage d'écran et chat texte.
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https%3A%2F%2Fgithub.com%2FIVobu%2Fwebrtc-call%2Ftree%2Frestore%2Fwebrtc-chat-2026-10-18)
+## Lancer le site comme avant (en local + Cloudflare Tunnel)
 
-## Déploiement en ligne (Render)
+Prérequis : Node.js 16+.
 
-1. Clique sur le bouton **Deploy to Render** ci-dessus et connecte ton compte GitHub à Render si demandé.
-2. Vérifie que la branche proposée est `restore/webrtc-chat-2026-10-18`.
-3. Valide **Deploy Blueprint**.
-4. Attends que le service passe à l'état **Live**, puis ouvre l'URL publique fournie par Render (en `https://…onrender.com`).
+1. Récupère cette branche sur la machine qui héberge déjà le site :
+   `git checkout restore/webrtc-chat-2026-10-18`
+   `git pull origin restore/webrtc-chat-2026-10-18`
+2. Installe les dépendances si nécessaire : `npm install`
+3. Lance l'application : `npm start`
+4. Dans un autre terminal, démarre Cloudflare Tunnel vers le serveur local, par exemple :
+   `cloudflared tunnel --url http://localhost:3000`
 
-**Important :** je ne peux pas créer l'URL publique finale sans accès à ton compte d'hébergement. Le bouton prépare le déploiement; l'URL du site sera créée par Render après validation. Le service gratuit peut se mettre en veille. Pour améliorer les connexions entre réseaux différents, configure un serveur TURN via `TURN_URL`, `TURN_USERNAME` et `TURN_CREDENTIAL` dans les variables d'environnement Render.
+Garde les deux terminaux ouverts. Cloudflare peut attribuer une nouvelle URL aux tunnels temporaires après un redémarrage. Si tu utilisais un tunnel nommé/configuré, conserve plutôt sa commande habituelle.
+
+Le code sur GitHub ne met pas automatiquement à jour un processus déjà lancé sur ton ordinateur : après avoir récupéré les changements, il faut redémarrer le serveur local. Le lien public fonctionne seulement tant que le serveur et le tunnel sont actifs.
 
 ## Architecture
 
@@ -24,18 +29,7 @@ Navigateur A ◄──── WebRTC P2P ────► Navigateur B
 
 Le serveur Node.js gère la signalisation. Les médias circulent directement entre navigateurs lorsque la connectivité réseau le permet.
 
-## Lancer en local
-
-Prérequis : Node.js 16+.
-
-```bash
-npm install
-npm start
-```
-
-Puis ouvre http://localhost:3000.
-
-## Fonctions présentes dans la branche de travail
+## Fonctions présentes dans cette branche de travail
 
 - Chat texte dans la salle.
 - Panneau latéral rétractable et redimensionnable.
