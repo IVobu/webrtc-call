@@ -88,6 +88,8 @@ const SETTINGS = {
 };
 
 let localStream = null;
+const screenStreams = new Map();
+const screenAudioSettings = new Map();
 let screenStream = null;
 let isScreenSharing = false;
 let micEnabled = true;
@@ -150,6 +152,8 @@ function getInfo(peerId) {
       speaking: false,
       screenStreamId: null,
       screenActive: false,
+      screenStreamIds: new Set(),
+      screenStreams: new Map(),
       camStream: null,
       screenStream: null,
     };
@@ -370,25 +374,9 @@ function updateTile(peerId) {
   tile.classList.toggle("speaking", !!speaking);
 
   // Partage d'écran : affiché dans la tuile de la personne, puis retour à l'état précédent.
-  const sharedStream = isLocal
-    ? (isScreenSharing ? screenStream : null)
-    : (info.screenActive ? info.screenStream || info.camStream : null);
   const camStream = isLocal ? localStream : info.camStream;
-  tile.classList.toggle("is-sharing", !!sharedStream);
-  tile.classList.toggle("is-camera-preview", !!(isLocal && camEnabled && camStream && !sharedStream));
-
-  if (sharedStream) {
-    if (video.srcObject !== sharedStream) video.srcObject = sharedStream;
-    img.classList.add("hidden");
-    img.classList.remove("bouncing");
-    video.classList.remove("hidden");
-    video.classList.add("screen-share");
-    if (!isLocal) playMedia(video);
-    updateStageEmpty();
-    renderParticipants();
-    return;
-  }
-
+  tile.classList.remove("is-sharing");
+  tile.classList.toggle("is-camera-preview", !!(isLocal && camEnabled && camStream));
   video.classList.remove("screen-share");
   if (video.srcObject !== camStream) video.srcObject = camStream || null;
 
@@ -551,17 +539,73 @@ function attachCamStream(peerId, stream) {
 
 function routeRemoteStream(peerId, stream) {
   const info = getInfo(peerId);
-  // Le flux d'écran est annoncé par un signal "screen" (avec l'id du flux).
-  // Repli : un second flux différent du flux caméra est traité comme un écran.
-  const isScreen =
-    stream.id === info.screenStreamId || (!!info.camStream && info.camStream.id !== stream.id);
-
+  const isScreen = info.screenStreamIds.has(stream.id) ||
+    (!!info.camStream && info.camStream.id !== stream.id && stream.getVideoTracks().length > 0);
   if (isScreen) {
+    info.screenStreams.set(stream.id, stream);
     info.screenStream = stream;
-    updateTile(peerId);
+    renderScreenShareTile(peerId, stream, false);
   } else {
     attachCamStream(peerId, stream);
   }
+}
+
+function renderScreenShareTile(ownerId, stream, isLocal) {
+  if (!stream) return;
+  const tileId = `screen-share-${stream.id}`;
+  let tile = document.getElementById(tileId);
+  if (!tile) {
+    tile = document.createElement("div");
+    tile.className = "video-tile is-sharing screen-share-tile";
+    tile.id = tileId;
+    const video = document.createElement("video");
+    video.autoplay = true; video.playsInline = true; video.muted = true;
+    video.className = "screen-share-video";
+    const audio = document.createElement("audio");
+    audio.autoplay = true; audio.muted = !!isLocal;
+    const label = document.createElement("span");
+    label.className = "video-label";
+    const controls = document.createElement("div");
+    controls.className = "screen-share-controls";
+    const volumeLabel = document.createElement("label");
+    volumeLabel.className = "screen-volume-label";
+    const volume = document.createElement("input");
+    volume.type = "range"; volume.min = "0"; volume.max = "200"; volume.step = "5";
+    volume.setAttribute("aria-label", "Volume de ce partage d'écran");
+    const saved = screenAudioSettings.get(stream.id) || { volume: 1, muted: false };
+    volume.value = String(Math.round(saved.volume * 100));
+    volume.addEventListener("click", (event) => event.stopPropagation());
+    volume.addEventListener("input", () => {
+      saved.volume = Number(volume.value) / 100;
+      screenAudioSettings.set(stream.id, saved);
+      audio.volume = saved.volume;
+      volumeLabel.textContent = `Son ${volume.value}%`;
+    });
+    controls.append(volumeLabel, volume);
+    if (isLocal) {
+      const stop = document.createElement("button");
+      stop.className = "screen-share-stop"; stop.type = "button"; stop.textContent = "Arrêter";
+      stop.addEventListener("click", (event) => { event.stopPropagation(); stopScreenShare(stream.id); });
+      controls.appendChild(stop);
+    }
+    tile.append(video, audio, label, controls);
+    videoGrid.appendChild(tile);
+    tile.addEventListener("click", (event) => {
+      if (event.target === volume || event.target.closest("button")) return;
+      tile.classList.toggle("screen-controls-expanded");
+    });
+  }
+  const video = tile.querySelector("video");
+  const audio = tile.querySelector("audio");
+  const settings = screenAudioSettings.get(stream.id) || { volume: 1, muted: false };
+  if (video.srcObject !== stream) video.srcObject = stream;
+  if (audio.srcObject !== stream) audio.srcObject = stream;
+  audio.volume = settings.volume; audio.muted = !!isLocal || settings.muted;
+  if (!isLocal) playMedia(audio);
+  playMedia(video);
+  const ownerName = isLocal ? (peerName || "Toi") : (peerInfo.get(ownerId)?.name || ownerId.slice(0, 6));
+  tile.querySelector(".video-label").textContent = `${ownerName} · Partage d'écran`;
+  updateStageEmpty();
 }
 
 // ---------- WebRTC (négociation parfaite) ----------
@@ -569,36 +613,20 @@ function sendSignal(to, data) {
   socket.emit("signal", { to, data });
 }
 
-// Comme à l'origine : la tuile de la personne passe de la caméra (ou de l'avatar)
-// à l'écran partagé, puis revient. On remplace la piste de l'émetteur vidéo existant :
-// pas de seconde vidéo, pas de renégociation, donc pas d'écran noir.
-function applyScreenToPeer(state) {
-  const track = screenStream && screenStream.getVideoTracks()[0];
-  if (!track) return;
-  if (state.videoSender) {
-    state.videoSender
-      .replaceTrack(track)
-      .catch((err) => console.error("replaceTrack (écran):", err));
-  } else {
-    // Pas de caméra : il n'y a aucun émetteur vidéo à réutiliser.
-    state.screenSender = state.pc.addTrack(track, screenStream);
-  }
+// Chaque partage utilise ses propres pistes WebRTC pour permettre plusieurs écrans simultanés.
+function applyScreenToPeer(state, stream) {
+  if (!stream || state.screenSenders.has(stream.id)) return;
+  const senders = [];
+  for (const track of stream.getTracks()) senders.push(state.pc.addTrack(track, stream));
+  state.screenSenders.set(stream.id, senders);
 }
 
-function restoreCameraForPeer(state) {
-  if (state.videoSender) {
-    const cam = localStream ? localStream.getVideoTracks()[0] : null;
-    state.videoSender
-      .replaceTrack(cam || null)
-      .catch((err) => console.error("replaceTrack (caméra):", err));
-  } else if (state.screenSender) {
-    try {
-      state.pc.removeTrack(state.screenSender);
-    } catch (err) {
-      console.warn("removeTrack:", err);
-    }
-    state.screenSender = null;
+function restoreCameraForPeer(state, streamId) {
+  for (const sender of state.screenSenders.get(streamId) || []) {
+    try { state.pc.removeTrack(sender); }
+    catch (err) { console.warn("removeTrack (écran):", err); }
   }
+  state.screenSenders.delete(streamId);
 }
 
 function createPeerConnection(peerId, isOfferer) {
@@ -611,8 +639,8 @@ function createPeerConnection(peerId, isOfferer) {
     ignoreOffer: false,
     pendingCandidates: [],
     queue: Promise.resolve(),
-    videoSender: null, // émetteur de la caméra (réutilisé pour l'écran)
-    screenSender: null, // seulement si la personne n'a pas de caméra
+    videoSender: null,
+    screenSenders: new Map(),
     iceRestarts: 0,
   };
   peers.set(peerId, state);
@@ -655,7 +683,7 @@ function createPeerConnection(peerId, isOfferer) {
       if (track.kind === "video") state.videoSender = sender;
     });
   }
-  if (isScreenSharing && screenStream) applyScreenToPeer(state);
+  for (const stream of screenStreams.values()) applyScreenToPeer(state, stream);
 
   // Sans micro/caméra, on veut quand même recevoir l'audio et la vidéo.
   if (isOfferer) {
@@ -673,9 +701,7 @@ function createPeerConnection(peerId, isOfferer) {
 function callPeer(peerId) {
   // On annonce le partage d'écran AVANT l'offre pour que le pair
   // sache classer le flux d'écran à sa réception.
-  if (isScreenSharing && screenStream) {
-    sendSignal(peerId, { type: "screen", sharing: true, streamId: screenStream.id });
-  }
+  for (const stream of screenStreams.values()) sendSignal(peerId, { type: "screen", sharing: true, streamId: stream.id });
   createPeerConnection(peerId, true);
 }
 
@@ -723,15 +749,24 @@ function handleSignal(from, data) {
   if (data.type === "screen") {
     const info = getInfo(from);
     ensureRemoteTile(from);
-    if (data.sharing) {
-      info.screenStreamId = data.streamId || null;
+    const streamId = typeof data.streamId === "string" ? data.streamId : "";
+    if (data.sharing && streamId) {
+      info.screenStreamIds.add(streamId);
+      info.screenStreamId = streamId;
       info.screenActive = true;
-    } else {
-      info.screenStreamId = null;
-      info.screenActive = false;
-      info.screenStream = null;
+    } else if (!data.sharing) {
+      const ids = streamId ? [streamId] : Array.from(info.screenStreamIds);
+      for (const id of ids) {
+        info.screenStreamIds.delete(id);
+        info.screenStreams.delete(id);
+        screenAudioSettings.delete(id);
+        document.getElementById(`screen-share-${id}`)?.remove();
+      }
+      info.screenActive = info.screenStreamIds.size > 0;
+      info.screenStreamId = info.screenStreamIds.values().next().value || null;
+      info.screenStream = info.screenStreams.values().next().value || null;
     }
-    updateTile(from);
+    updateStageEmpty();
     return;
   }
 
@@ -769,57 +804,44 @@ function removePeer(peerId) {
 
 // ---------- Partage d'écran ----------
 async function startScreenShare() {
-  if (isScreenSharing) return;
   try {
-    const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-    screenStream = stream;
-
+    const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+    screenStreams.set(stream.id, stream);
+    screenAudioSettings.set(stream.id, { volume: 1, muted: false });
+    screenStream = screenStreams.values().next().value || null;
+    isScreenSharing = screenStreams.size > 0;
     const track = stream.getVideoTracks()[0];
     if (track) {
       track.contentHint = "detail";
-      track.onended = () => stopScreenShare();
+      track.onended = () => stopScreenShare(stream.id);
     }
-
-    isScreenSharing = true;
-
-    // On prévient chaque pair, puis on bascule sa piste vidéo sur l'écran.
+    renderScreenShareTile("local", stream, true);
     for (const [peerId, state] of peers) {
       sendSignal(peerId, { type: "screen", sharing: true, streamId: stream.id });
-      applyScreenToPeer(state);
+      applyScreenToPeer(state, stream);
     }
-
-    updateTile("local");
     updateControls();
-  } catch (err) {
-    console.error("Erreur partage écran:", err);
-  }
+  } catch (err) { console.error("Erreur partage écran:", err); }
 }
 
-function stopScreenShare() {
-  if (!isScreenSharing) return;
-  isScreenSharing = false;
-
+function stopScreenShare(streamId) {
+  const stream = screenStreams.get(streamId);
+  if (!stream) return;
   for (const [peerId, state] of peers) {
-    restoreCameraForPeer(state);
-    sendSignal(peerId, { type: "screen", sharing: false });
+    restoreCameraForPeer(state, streamId);
+    sendSignal(peerId, { type: "screen", sharing: false, streamId });
   }
-
-  if (screenStream) {
-    screenStream.getTracks().forEach((t) => {
-      t.onended = null;
-      t.stop();
-    });
-    screenStream = null;
-  }
-
-  updateTile("local");
+  stream.getTracks().forEach((track) => { track.onended = null; track.stop(); });
+  screenStreams.delete(streamId);
+  screenAudioSettings.delete(streamId);
+  document.getElementById(`screen-share-${streamId}`)?.remove();
+  screenStream = screenStreams.values().next().value || null;
+  isScreenSharing = screenStreams.size > 0;
+  updateStageEmpty();
   updateControls();
 }
 
-function toggleScreenShare() {
-  if (isScreenSharing) stopScreenShare();
-  else startScreenShare();
-}
+function toggleScreenShare() { startScreenShare(); }
 
 // ---------- Détection de parole ----------
 function startSpeakingDetection() {
@@ -940,7 +962,7 @@ function sendChat() {
 
 // ---------- Entrée / sortie d'appel ----------
 function leaveCall() {
-  if (isScreenSharing) stopScreenShare();
+  for (const id of Array.from(screenStreams.keys())) stopScreenShare(id);
 
   peers.forEach((state) => {
     state.pc.onconnectionstatechange = null;
@@ -961,15 +983,13 @@ function leaveCall() {
   }
   localVideo.srcObject = null;
 
-  if (screenStream) {
-    screenStream.getTracks().forEach((t) => t.stop());
-    screenStream = null;
-  }
-
+  screenStreams.clear();
+  screenAudioSettings.clear();
+  screenStream = null;
   isScreenSharing = false;
   localSpeaking = false;
   micEnabled = true;
-  camEnabled = true;
+  camEnabled = false;
   updateControls();
 
   if (socket.connected) socket.emit("leave-room");
