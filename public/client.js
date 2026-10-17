@@ -220,6 +220,7 @@ function updateControls() {
   camBtn.classList.toggle("danger", !camEnabled);
   screenBtn.classList.toggle("active", isScreenSharing);
   screenBtn.classList.toggle("danger", isScreenSharing);
+  renderParticipants();
 }
 
 function toggleMic() {
@@ -320,6 +321,7 @@ function updateTile(peerId) {
     video.classList.add("screen-share");
     if (!isLocal) playMedia(video);
     updateStageEmpty();
+    renderParticipants();
     return;
   }
 
