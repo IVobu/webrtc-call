@@ -103,6 +103,7 @@ let unreadCount = 0;
 const peers = new Map();
 // peerId -> { name, avatar, speaking, screenStreamId, camStream, screenStream }
 const peerInfo = new Map();
+const peerAudioSettings = new Map();
 
 let audioContext = null;
 let analyser = null;
@@ -140,6 +141,7 @@ function cleanAvatar(avatar) {
 }
 
 function getInfo(peerId) {
+  if (!peerAudioSettings.has(peerId)) peerAudioSettings.set(peerId, { volume: 1, muted: false });
   let info = peerInfo.get(peerId);
   if (!info) {
     info = {
@@ -451,6 +453,48 @@ function renderParticipants() {
     status.className = "participant-status";
     status.textContent = person.speaking ? "Parle" : (person.local ? (micEnabled ? "Micro actif" : "Micro coupé") : "Connecté");
     row.append(rowAvatar, rowName, status);
+
+    if (!person.local) {
+      const audioSettings = peerAudioSettings.get(person.id) || { volume: 1, muted: false };
+      const controls = document.createElement("div");
+      controls.className = "participant-audio-controls";
+      const muteLabel = document.createElement("label");
+      const mute = document.createElement("input");
+      mute.type = "checkbox";
+      mute.className = "mute-toggle";
+      mute.checked = audioSettings.muted;
+      mute.addEventListener("click", (event) => event.stopPropagation());
+      mute.addEventListener("change", () => {
+        audioSettings.muted = mute.checked;
+        peerAudioSettings.set(person.id, audioSettings);
+        const audio = $(`tile-${person.id}`)?.querySelector("audio");
+        if (audio) audio.muted = audioSettings.muted;
+        muteLabel.lastChild.textContent = mute.checked ? " Participant en sourdine" : " Son du participant";
+      });
+      muteLabel.append(mute, document.createTextNode(audioSettings.muted ? " Participant en sourdine" : " Son du participant"));
+
+      const volumeLabel = document.createElement("label");
+      volumeLabel.textContent = `Volume : ${Math.round(audioSettings.volume * 100)} %`;
+      const volume = document.createElement("input");
+      volume.type = "range";
+      volume.min = "0";
+      volume.max = "200";
+      volume.step = "5";
+      volume.value = String(Math.round(audioSettings.volume * 100));
+      volume.setAttribute("aria-label", `Volume de ${person.name}`);
+      volume.addEventListener("click", (event) => event.stopPropagation());
+      volume.addEventListener("input", () => {
+        audioSettings.volume = Number(volume.value) / 100;
+        peerAudioSettings.set(person.id, audioSettings);
+        const audio = $(`tile-${person.id}`)?.querySelector("audio");
+        if (audio) audio.volume = audioSettings.volume;
+        volumeLabel.textContent = `Volume : ${volume.value} %`;
+      });
+      controls.append(muteLabel, volumeLabel, volume);
+      row.appendChild(controls);
+      row.addEventListener("click", () => row.classList.toggle("audio-controls-open"));
+      row.title = "Cliquer pour régler le son de ce participant";
+    }
     participantsList.appendChild(row);
 
     const chip = document.createElement("div");
@@ -486,6 +530,9 @@ function attachCamStream(peerId, stream) {
   info.camStream = stream;
   const tile = ensureRemoteTile(peerId);
   const audio = tile.querySelector("audio");
+  const audioSettings = peerAudioSettings.get(peerId) || { volume: 1, muted: false };
+  audio.volume = audioSettings.volume;
+  audio.muted = audioSettings.muted;
   if (audio.srcObject !== stream) audio.srcObject = stream;
   updateTile(peerId);
   playMedia(tile.querySelector("video"));
@@ -701,6 +748,7 @@ function removePeer(peerId) {
     peers.delete(peerId);
   }
   peerInfo.delete(peerId);
+  peerAudioSettings.delete(peerId);
   const tile = $(`tile-${peerId}`);
   if (tile) {
     tile.querySelectorAll("video, audio").forEach((el) => (el.srcObject = null));
