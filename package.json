@@ -4,7 +4,8 @@
   "description": "Application d'appel P2P WebRTC avec partage d'ecran",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node tests/media-features.test.js"
   },
   "dependencies": {
     "express": "^4.18.2",

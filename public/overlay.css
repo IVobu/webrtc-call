@@ -1,0 +1,88 @@
+* {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+  background: transparent;
+  color: #fff;
+  font-family: Arial, sans-serif;
+}
+
+#overlay {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 12px;
+}
+
+#overlay-status {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 14px;
+  text-shadow: 0 1px 4px #000;
+}
+
+.overlay-peers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.overlay-peer {
+  width: 180px;
+  text-align: center;
+  text-shadow: 0 1px 4px #000;
+}
+
+.overlay-avatar {
+  display: block;
+  width: 180px;
+  height: 180px;
+  object-fit: contain;
+  border-radius: 50%;
+  background: rgba(10, 25, 47, 0.65);
+  transition: opacity 180ms ease, filter 180ms ease;
+}
+
+.overlay-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 24px;
+}
+
+.overlay-name {
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+  font-size: 16px;
+}
+
+.avatar-idle-dim {
+  opacity: 0.68;
+  filter: grayscale(0.8);
+}
+
+.avatar-bounce {
+  animation: avatar-bounce 420ms ease-in-out infinite alternate;
+  transform-origin: center bottom;
+}
+
+@keyframes avatar-bounce {
+  from { transform: translateY(0) scale(1); }
+  to { transform: translateY(-5px) scale(1.035); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .avatar-bounce {
+    animation: none;
+  }
+}

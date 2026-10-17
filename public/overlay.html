@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebRTC Call — OBS</title>
+  <link rel="stylesheet" href="overlay.css">
+</head>
+<body>
+  <main id="overlay" aria-live="polite">
+    <p id="overlay-status">Connexion à la salle…</p>
+    <div id="overlay-peers" class="overlay-peers"></div>
+  </main>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="overlay.js"></script>
+</body>
+</html>
