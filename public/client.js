@@ -594,6 +594,21 @@ function renderScreenShareTile(ownerId, stream, isLocal) {
     }
     tile.append(video, audio, label, controls);
     videoGrid.appendChild(tile);
+    label.draggable = true;
+    label.title = "Glisser pour réorganiser les partages";
+    label.addEventListener("dragstart", (event) => {
+      event.dataTransfer.setData("text/plain", tile.id);
+      event.dataTransfer.effectAllowed = "move";
+    });
+    tile.addEventListener("dragover", (event) => event.preventDefault());
+    tile.addEventListener("drop", (event) => {
+      event.preventDefault();
+      const draggedId = event.dataTransfer.getData("text/plain");
+      const dragged = document.getElementById(draggedId);
+      if (dragged && dragged !== tile && dragged.classList.contains("screen-share-tile")) {
+        videoGrid.insertBefore(dragged, tile);
+      }
+    });
     tile.addEventListener("click", (event) => {
       if (event.target === volume || event.target.closest("button")) return;
       tile.classList.toggle("screen-controls-expanded");
