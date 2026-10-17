@@ -108,6 +108,8 @@ const peerInfo = new Map();
 const peerAudioSettings = new Map();
 
 let audioContext = null;
+let gainAudioContext = null;
+const mediaElementGains = new WeakMap();
 let analyser = null;
 let micInterval = null;
 
@@ -488,7 +490,7 @@ function renderParticipants() {
         audioSettings.volume = Number(volume.value) / 100;
         peerAudioSettings.set(person.id, audioSettings);
         const audio = $(`tile-${person.id}`)?.querySelector("audio");
-        if (audio) audio.volume = audioSettings.volume;
+        if (audio) setMediaElementVolume(audio, audioSettings.volume);
         volumeLabel.textContent = `Volume : ${volume.value} %`;
       });
       controls.append(muteLabel, volumeLabel, volume);
@@ -526,13 +528,44 @@ function playMedia(el) {
   }
 }
 
+// HTMLMediaElement.volume is limited to 0..1. Use Web Audio gain only when
+// amplification above 100% is requested; normal volume keeps the native path.
+function setMediaElementVolume(el, value) {
+  const volume = Math.max(0, Math.min(2, Number(value) || 0));
+  let graph = mediaElementGains.get(el);
+  if (!graph && volume <= 1) {
+    el.volume = volume;
+    return;
+  }
+  try {
+    if (!gainAudioContext || gainAudioContext.state === "closed") {
+      gainAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (!graph) {
+      const source = gainAudioContext.createMediaElementSource(el);
+      const gain = gainAudioContext.createGain();
+      source.connect(gain);
+      gain.connect(gainAudioContext.destination);
+      graph = { source, gain };
+      mediaElementGains.set(el, graph);
+    }
+    el.volume = 1;
+    graph.gain.gain.value = volume;
+    if (gainAudioContext.state === "suspended") gainAudioContext.resume().catch(() => {});
+  } catch (err) {
+    // Fallback when Web Audio amplification is unavailable.
+    el.volume = Math.min(1, volume);
+    console.warn("Amplification audio indisponible :", err);
+  }
+}
+
 function attachCamStream(peerId, stream) {
   const info = getInfo(peerId);
   info.camStream = stream;
   const tile = ensureRemoteTile(peerId);
   const audio = tile.querySelector("audio");
   const audioSettings = peerAudioSettings.get(peerId) || { volume: 1, muted: false };
-  audio.volume = audioSettings.volume;
+  setMediaElementVolume(audio, audioSettings.volume);
   audio.muted = audioSettings.muted;
   if (audio.srcObject !== stream) audio.srcObject = stream;
   updateTile(peerId);
@@ -582,7 +615,7 @@ function renderScreenShareTile(ownerId, stream, isLocal) {
     volume.addEventListener("input", () => {
       saved.volume = Number(volume.value) / 100;
       screenAudioSettings.set(stream.id, saved);
-      audio.volume = saved.volume;
+      setMediaElementVolume(audio, saved.volume);
       volumeLabel.textContent = `Son ${volume.value}%`;
     });
     controls.append(volumeLabel, volume);
@@ -619,7 +652,7 @@ function renderScreenShareTile(ownerId, stream, isLocal) {
   const settings = screenAudioSettings.get(stream.id) || { volume: 1, muted: false };
   if (video.srcObject !== stream) video.srcObject = stream;
   if (audio.srcObject !== stream) audio.srcObject = stream;
-  audio.volume = settings.volume; audio.muted = !!isLocal || settings.muted;
+  setMediaElementVolume(audio, settings.volume); audio.muted = !!isLocal || settings.muted;
   if (!isLocal) playMedia(audio);
   playMedia(video);
   const ownerName = isLocal ? (peerName || "Toi") : (peerInfo.get(ownerId)?.name || ownerId.slice(0, 6));
