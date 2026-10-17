@@ -271,15 +271,38 @@ async function applyLocalMediaSettings() {
       });
     } catch (err) { console.warn("Qualité vidéo non prise en charge :", err); }
   }
-  for (const state of peers.values()) {
-    const sender = state.videoSender;
-    if (!sender || !sender.getParameters || !sender.setParameters) continue;
+  const h = SETTINGS.videoHeight;
+  const maxBitrate = h <= 360 ? 450000 : h <= 720 ? 1200000 : 2500000;
+  // Réduire aussi la qualité des partages d'écran, pas seulement celle de la caméra.
+  for (const stream of screenStreams.values()) {
+    const track = stream.getVideoTracks()[0];
+    if (!track || !track.applyConstraints) continue;
     try {
-      const params = sender.getParameters();
-      if (!params.encodings || !params.encodings.length) params.encodings = [{}];
-      params.encodings[0].maxBitrate = SETTINGS.videoHeight <= 360 ? 450000 : SETTINGS.videoHeight <= 720 ? 1200000 : 2500000;
-      await sender.setParameters(params);
-    } catch (err) { console.warn("Limite de débit vidéo non appliquée :", err); }
+      await track.applyConstraints({
+        width: { ideal: Math.round(h * 16 / 9) },
+        height: { ideal: h },
+        frameRate: { ideal: SETTINGS.videoFps, max: SETTINGS.videoFps }
+      });
+    } catch (err) { console.warn("Qualité du partage non prise en charge :", err); }
+  }
+  for (const state of peers.values()) {
+    const senders = [];
+    if (state.videoSender) senders.push(state.videoSender);
+    for (const group of state.screenSenders.values()) {
+      for (const sender of group) {
+        if (sender.track && sender.track.kind === "video") senders.push(sender);
+      }
+    }
+    for (const sender of senders) {
+      if (!sender.getParameters || !sender.setParameters) continue;
+      try {
+        const params = sender.getParameters();
+        if (!params.encodings || !params.encodings.length) params.encodings = [{}];
+        params.encodings[0].maxBitrate = maxBitrate;
+        params.encodings[0].maxFramerate = SETTINGS.videoFps;
+        await sender.setParameters(params);
+      } catch (err) { console.warn("Limite de débit vidéo non appliquée :", err); }
+    }
   }
 }
 
@@ -641,6 +664,20 @@ function renderScreenShareTile(ownerId, stream, isLocal) {
       volumeLabel.textContent = `Son ${volume.value}%`;
     });
     controls.append(volumeLabel, volume);
+    if (!isLocal) {
+      const mute = document.createElement("button");
+      mute.className = "screen-share-mute";
+      mute.type = "button";
+      mute.textContent = saved.muted ? "Activer le son" : "Couper le son";
+      mute.addEventListener("click", (event) => {
+        event.stopPropagation();
+        saved.muted = !saved.muted;
+        screenAudioSettings.set(stream.id, saved);
+        applyScreenAudioVolume(ownerId, stream.id, audio);
+        mute.textContent = saved.muted ? "Activer le son" : "Couper le son";
+      });
+      controls.appendChild(mute);
+    }
     if (isLocal) {
       const stop = document.createElement("button");
       stop.className = "screen-share-stop"; stop.type = "button"; stop.textContent = "Arrêter";
