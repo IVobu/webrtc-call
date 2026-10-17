@@ -8,14 +8,14 @@ const MAX_PEERS = parseInt(process.env.MAX_PEERS || "8", 10);
 const MAX_NAME = 20;
 const MAX_CHAT = 500;
 const MAX_CHAT_HISTORY = 50;
-const MAX_IMAGE_CHARS = 2_000_000; // taille max d'un avatar (data URL ou URL)
+const MAX_IMAGE_CHARS = 20_000_000; // avatar (data URL ou URL) : large pour les webp/gif animés
 
 const app = express();
 const server = http.createServer(app);
 
 // Le client est servi par ce même serveur : pas besoin de CORS ouvert.
-// 4 Mo suffisent pour les avatars (data URL) sans permettre d'abus énormes.
-const io = new Server(server, { maxHttpBufferSize: 4 * 1024 * 1024 });
+// Limite relevée (25 Mo) pour que les avatars animés (webp/gif) passent sans coupure.
+const io = new Server(server, { maxHttpBufferSize: 25 * 1024 * 1024 });
 
 app.use(express.static(path.join(__dirname, "public")));
 
@@ -66,7 +66,9 @@ function cleanName(value) {
 
 function cleanImage(value) {
   if (typeof value !== "string" || value.length > MAX_IMAGE_CHARS) return "";
-  return /^(data:image\/(png|jpe?g|gif|webp);base64,|https?:\/\/)/i.test(value) ? value : "";
+  const v = value.trim();
+  if (!v || /^(javascript|vbscript):/i.test(v) || /^data:(?!image\/)/i.test(v)) return "";
+  return v;
 }
 
 function cleanAvatar(avatar) {

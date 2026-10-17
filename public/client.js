@@ -49,8 +49,6 @@ const chatSend = $("chat-send");
 
 // ---------- Constantes / état ----------
 const SETTINGS_VERSION = 2;
-const MAX_AVATAR_FILE_BYTES = 1_000_000; // au-delà : réduction (images fixes) ou refus (GIF)
-const MAX_AVATAR_CHARS = 1_900_000; // doit rester sous la limite du serveur
 
 let rtcConfig = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
 const iceReady = fetch("/ice-config", { cache: "no-store" })
@@ -110,8 +108,8 @@ function storageSet(key, value) {
 function cleanImageValue(value) {
   if (typeof value !== "string") return "";
   const v = value.trim();
-  if (v.length > MAX_AVATAR_CHARS) return "";
-  return /^(data:image\/(png|jpe?g|gif|webp);base64,|https?:\/\/)/i.test(v) ? v : "";
+  if (!v || /^(javascript|vbscript):/i.test(v) || /^data:(?!image\/)/i.test(v)) return "";
+  return v;
 }
 
 function cleanAvatar(avatar) {
@@ -127,6 +125,7 @@ function getInfo(peerId) {
       avatar: { idle: "", talking: "" },
       speaking: false,
       screenStreamId: null,
+      screenActive: false,
       camStream: null,
       screenStream: null,
     };
@@ -159,8 +158,8 @@ function loadSettings() {
 
   avatarIdle = cleanImageValue(storageGet("webrtcAvatarIdle") || "");
   avatarTalking = cleanImageValue(storageGet("webrtcAvatarTalking") || "");
-  showAvatarInInput(avatarIdleInput, avatarIdle);
-  showAvatarInInput(avatarTalkingInput, avatarTalking);
+  if (avatarIdle) avatarIdleInput.value = avatarIdle;
+  if (avatarTalking) avatarTalkingInput.value = avatarTalking;
 
   bounceEnabledInput.checked = SETTINGS.bounceEnabled;
   bounceIntensityInput.value = SETTINGS.bounceIntensity;
@@ -297,6 +296,25 @@ function updateTile(peerId) {
 
   tile.classList.toggle("speaking", !!speaking);
 
+  // Partage d'écran : affiché dans la tuile de la personne, puis retour à l'état précédent.
+  const sharedStream = isLocal
+    ? (isScreenSharing ? screenStream : null)
+    : (info.screenActive ? info.screenStream || info.camStream : null);
+  const camStream = isLocal ? localStream : info.camStream;
+
+  if (sharedStream) {
+    if (video.srcObject !== sharedStream) video.srcObject = sharedStream;
+    img.classList.add("hidden");
+    img.classList.remove("bouncing");
+    video.classList.remove("hidden");
+    video.classList.add("screen-share");
+    if (!isLocal) playMedia(video);
+    return;
+  }
+
+  video.classList.remove("screen-share");
+  if (video.srcObject !== camStream) video.srcObject = camStream || null;
+
   const src = pickAvatar(avatars, speaking);
   if (src) {
     video.classList.add("hidden");
@@ -337,45 +355,11 @@ function attachCamStream(peerId, stream) {
   const info = getInfo(peerId);
   info.camStream = stream;
   const tile = ensureRemoteTile(peerId);
-  const video = tile.querySelector("video");
   const audio = tile.querySelector("audio");
-  if (video.srcObject !== stream) video.srcObject = stream;
   if (audio.srcObject !== stream) audio.srcObject = stream;
-  playMedia(video);
+  updateTile(peerId);
+  playMedia(tile.querySelector("video"));
   playMedia(audio);
-}
-
-// Tuile dédiée aux partages d'écran (la sienne : key = "local", ou celle d'un pair).
-function showScreenTile(key, label, stream) {
-  let tile = $(`screen-${key}`);
-  if (!tile) {
-    tile = document.createElement("div");
-    tile.className = "video-tile screen-tile";
-    tile.id = `screen-${key}`;
-
-    const video = document.createElement("video");
-    video.autoplay = true;
-    video.playsInline = true;
-    video.muted = true;
-
-    const lab = document.createElement("span");
-    lab.className = "video-label";
-
-    tile.append(video, lab);
-    videoGrid.prepend(tile);
-  }
-  tile.querySelector(".video-label").textContent = label;
-  const video = tile.querySelector("video");
-  if (video.srcObject !== stream) video.srcObject = stream;
-  playMedia(video);
-}
-
-function removeScreenTile(key) {
-  const tile = $(`screen-${key}`);
-  if (!tile) return;
-  const video = tile.querySelector("video");
-  if (video) video.srcObject = null;
-  tile.remove();
 }
 
 function routeRemoteStream(peerId, stream) {
@@ -387,7 +371,7 @@ function routeRemoteStream(peerId, stream) {
 
   if (isScreen) {
     info.screenStream = stream;
-    showScreenTile(peerId, `${info.name || "Participant"} — écran`, stream);
+    updateTile(peerId);
   } else {
     attachCamStream(peerId, stream);
   }
@@ -398,9 +382,36 @@ function sendSignal(to, data) {
   socket.emit("signal", { to, data });
 }
 
-function addScreenTrack(state) {
+// Comme à l'origine : la tuile de la personne passe de la caméra (ou de l'avatar)
+// à l'écran partagé, puis revient. On remplace la piste de l'émetteur vidéo existant :
+// pas de seconde vidéo, pas de renégociation, donc pas d'écran noir.
+function applyScreenToPeer(state) {
   const track = screenStream && screenStream.getVideoTracks()[0];
-  if (track) state.screenSender = state.pc.addTrack(track, screenStream);
+  if (!track) return;
+  if (state.videoSender) {
+    state.videoSender
+      .replaceTrack(track)
+      .catch((err) => console.error("replaceTrack (écran):", err));
+  } else {
+    // Pas de caméra : il n'y a aucun émetteur vidéo à réutiliser.
+    state.screenSender = state.pc.addTrack(track, screenStream);
+  }
+}
+
+function restoreCameraForPeer(state) {
+  if (state.videoSender) {
+    const cam = localStream ? localStream.getVideoTracks()[0] : null;
+    state.videoSender
+      .replaceTrack(cam || null)
+      .catch((err) => console.error("replaceTrack (caméra):", err));
+  } else if (state.screenSender) {
+    try {
+      state.pc.removeTrack(state.screenSender);
+    } catch (err) {
+      console.warn("removeTrack:", err);
+    }
+    state.screenSender = null;
+  }
 }
 
 function createPeerConnection(peerId, isOfferer) {
@@ -413,7 +424,8 @@ function createPeerConnection(peerId, isOfferer) {
     ignoreOffer: false,
     pendingCandidates: [],
     queue: Promise.resolve(),
-    screenSender: null,
+    videoSender: null, // émetteur de la caméra (réutilisé pour l'écran)
+    screenSender: null, // seulement si la personne n'a pas de caméra
     iceRestarts: 0,
   };
   peers.set(peerId, state);
@@ -451,9 +463,12 @@ function createPeerConnection(peerId, isOfferer) {
   };
 
   if (localStream) {
-    localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+    localStream.getTracks().forEach((track) => {
+      const sender = pc.addTrack(track, localStream);
+      if (track.kind === "video") state.videoSender = sender;
+    });
   }
-  if (isScreenSharing && screenStream) addScreenTrack(state);
+  if (isScreenSharing && screenStream) applyScreenToPeer(state);
 
   // Sans micro/caméra, on veut quand même recevoir l'audio et la vidéo.
   if (isOfferer) {
@@ -523,14 +538,13 @@ function handleSignal(from, data) {
     ensureRemoteTile(from);
     if (data.sharing) {
       info.screenStreamId = data.streamId || null;
-      if (info.screenStream && info.screenStream.id === info.screenStreamId) {
-        showScreenTile(from, `${info.name || "Participant"} — écran`, info.screenStream);
-      }
+      info.screenActive = true;
     } else {
       info.screenStreamId = null;
+      info.screenActive = false;
       info.screenStream = null;
-      removeScreenTile(from);
     }
+    updateTile(from);
     return;
   }
 
@@ -562,7 +576,6 @@ function removePeer(peerId) {
     tile.querySelectorAll("video, audio").forEach((el) => (el.srcObject = null));
     tile.remove();
   }
-  removeScreenTile(peerId);
   updateParticipantCount();
 }
 
@@ -581,14 +594,13 @@ async function startScreenShare() {
 
     isScreenSharing = true;
 
-    // Annonce d'abord (même socket : l'ordre est conservé), puis ajout de la piste
-    // qui déclenche automatiquement la renégociation.
+    // On prévient chaque pair, puis on bascule sa piste vidéo sur l'écran.
     for (const [peerId, state] of peers) {
       sendSignal(peerId, { type: "screen", sharing: true, streamId: stream.id });
-      addScreenTrack(state);
+      applyScreenToPeer(state);
     }
 
-    showScreenTile("local", `${peerName} — ton écran`, stream);
+    updateTile("local");
     updateControls();
   } catch (err) {
     console.error("Erreur partage écran:", err);
@@ -600,14 +612,7 @@ function stopScreenShare() {
   isScreenSharing = false;
 
   for (const [peerId, state] of peers) {
-    if (state.screenSender) {
-      try {
-        state.pc.removeTrack(state.screenSender);
-      } catch (err) {
-        console.warn("removeTrack:", err);
-      }
-      state.screenSender = null;
-    }
+    restoreCameraForPeer(state);
     sendSignal(peerId, { type: "screen", sharing: false });
   }
 
@@ -619,7 +624,7 @@ function stopScreenShare() {
     screenStream = null;
   }
 
-  removeScreenTile("local");
+  updateTile("local");
   updateControls();
 }
 
@@ -860,108 +865,40 @@ async function joinRoom(code) {
 }
 
 // ---------- Avatars ----------
-const placeholders = new Map();
-
-function showAvatarInInput(input, value) {
-  if (!placeholders.has(input)) placeholders.set(input, input.placeholder);
-  if (value && value.startsWith("data:")) {
-    input.value = "";
-    input.placeholder = "Image locale chargée";
-  } else {
-    input.value = value || "";
-    input.placeholder = placeholders.get(input);
-  }
-}
-
-function readAsDataURL(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(new Error("Lecture du fichier impossible."));
-    reader.readAsDataURL(blob);
-  });
-}
-
-async function downscaleImage(file, maxSide) {
-  const url = URL.createObjectURL(file);
-  try {
-    const img = await new Promise((resolve, reject) => {
-      const image = new Image();
-      image.onload = () => resolve(image);
-      image.onerror = () => reject(new Error("Image illisible."));
-      image.src = url;
-    });
-    const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
-    canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
-    canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL("image/webp", 0.85);
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-}
-
-async function fileToAvatar(file) {
-  if (!file.type.startsWith("image/")) throw new Error("Ce fichier n'est pas une image.");
-
-  let dataUrl;
-  if (file.size <= MAX_AVATAR_FILE_BYTES) {
-    dataUrl = await readAsDataURL(file);
-  } else if (file.type === "image/gif") {
-    // Redimensionner un GIF supprimerait l'animation : on refuse plutôt que de la casser.
-    throw new Error("GIF trop lourd (max 1 Mo). Utilise un GIF plus léger ou une URL.");
-  } else {
-    dataUrl = await downscaleImage(file, 512);
-  }
-
-  const clean = cleanImageValue(dataUrl);
-  if (!clean) throw new Error("Image trop lourde ou format non pris en charge (png, jpg, gif, webp).");
-  return clean;
+function readAvatarFile(file, callback) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => callback(reader.result);
+  reader.readAsDataURL(file);
 }
 
 function setAvatar(kind, value) {
-  if (kind === "idle") avatarIdle = value;
-  else avatarTalking = value;
-  storageSet(kind === "idle" ? "webrtcAvatarIdle" : "webrtcAvatarTalking", value);
+  if (kind === "idle") {
+    avatarIdle = value;
+    storageSet("webrtcAvatarIdle", value);
+  } else {
+    avatarTalking = value;
+    storageSet("webrtcAvatarTalking", value);
+  }
   updateTile("local");
   sendAvatar();
 }
 
-function bindAvatarInputs(kind, textInput, fileInput) {
-  fileInput.addEventListener("change", async () => {
-    const file = fileInput.files[0];
-    if (!file) return;
-    homeError.textContent = "";
-    try {
-      const dataUrl = await fileToAvatar(file);
-      setAvatar(kind, dataUrl);
-      showAvatarInInput(textInput, dataUrl);
-    } catch (err) {
-      homeError.textContent = err.message;
-    }
-    fileInput.value = "";
-  });
+avatarIdleFile.addEventListener("change", () => {
+  readAvatarFile(avatarIdleFile.files[0], (dataUrl) => setAvatar("idle", dataUrl));
+});
 
-  textInput.addEventListener("change", () => {
-    const raw = textInput.value.trim();
-    if (!raw) {
-      homeError.textContent = "";
-      setAvatar(kind, "");
-      return;
-    }
-    const clean = cleanImageValue(raw);
-    if (!clean) {
-      homeError.textContent = "URL d'image invalide (elle doit commencer par http:// ou https://).";
-      return;
-    }
-    homeError.textContent = "";
-    setAvatar(kind, clean);
-  });
-}
+avatarTalkingFile.addEventListener("change", () => {
+  readAvatarFile(avatarTalkingFile.files[0], (dataUrl) => setAvatar("talking", dataUrl));
+});
 
-bindAvatarInputs("idle", avatarIdleInput, avatarIdleFile);
-bindAvatarInputs("talking", avatarTalkingInput, avatarTalkingFile);
+avatarIdleInput.addEventListener("change", () => {
+  setAvatar("idle", avatarIdleInput.value.trim());
+});
+
+avatarTalkingInput.addEventListener("change", () => {
+  setAvatar("talking", avatarTalkingInput.value.trim());
+});
 
 // ---------- Événements UI ----------
 bounceEnabledInput.addEventListener("change", () => {
