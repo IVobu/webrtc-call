@@ -393,6 +393,7 @@ async function run() {
   assert.doesNotMatch(markup, /screen-audio-option/);
   assert.match(clientSource, /getDisplayMedia\(\{[\s\S]*?audio:\s*true/);
   assert.match(styles, /\.share-audio-controls/);
+  assert.match(styles, /\.share-tile\.selected \.share-audio-controls/);
   assert.match(styles, /\.pseudos-hidden \.video-label,\s*\.pseudos-hidden \.share-label/);
   assert.doesNotMatch(styles, /\.pseudos-hidden[^}]*participant-name/);
   assert.match(styles, /#call-screen\s*\{[^}]*height:\s*100vh/s);
@@ -654,10 +655,23 @@ async function run() {
   );
   assert.equal(remoteShareAudio.controls.dataset.peerId, "peer");
   assert.equal(remoteShareAudio.controls.dataset.shareSlot, String(sources[1].slot));
+  const remoteShareTileForVolume = remoteShareAudio.controls.closest(".share-tile");
+  remoteShareTileForVolume.listeners.click[0]({});
+  assert.equal(remoteShareTileForVolume.classList.contains("selected"), true,
+    "selecting a share tile should expose its own audio controls");
   const shareVolume = remoteShareAudio.controls.children.find((child) => child.type === "range");
-  shareVolume.value = "0.4";
+  assert.equal(shareVolume.min, "0");
+  assert.equal(shareVolume.max, "100", "share volume should be adjustable from 0 to 100");
+  const microphoneVolume = app.remoteAudio.get("peer").volume;
+  shareVolume.value = "40";
   shareVolume.listeners.input[0]();
   assert.equal(remoteShareAudio.audio.volume, 0.4, "share volume should be independently adjustable");
+  assert.equal(app.remoteAudio.get("peer").volume, microphoneVolume,
+    "changing share volume must not change participant microphone volume");
+  assert.equal(
+    remoteShareAudio.controls.children.find((child) => child.classList.contains("share-audio-volume-value")).textContent,
+    "40%"
+  );
   const shareMute = remoteShareAudio.controls.children.find((child) => child.type === "button");
   shareMute.listeners.click[0]();
   assert.equal(remoteShareAudio.audio.muted, true, "share mute should affect only this share audio");
@@ -675,8 +689,13 @@ async function run() {
     transceiver: { sender: app.shareAudioSenders.get("peer")[0] },
   });
   const otherRemoteShareAudio = app.remoteShareAudio.get("peer").get(0);
+  const otherShareTileForVolume = otherRemoteShareAudio.controls.closest(".share-tile");
+  otherShareTileForVolume.listeners.click[0]({});
+  assert.equal(otherShareTileForVolume.classList.contains("selected"), true);
+  assert.equal(remoteShareTileForVolume.classList.contains("selected"), false,
+    "selecting another share should select only that source tile");
   const otherShareVolume = otherRemoteShareAudio.controls.children.find((child) => child.type === "range");
-  otherShareVolume.value = "0.8";
+  otherShareVolume.value = "80";
   otherShareVolume.listeners.input[0]();
   assert.equal(otherRemoteShareAudio.audio.volume, 0.8);
   assert.equal(remoteShareAudio.audio.volume, 0.4, "changing one share volume must not change another share");

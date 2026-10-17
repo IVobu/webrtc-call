@@ -810,7 +810,7 @@ input:focus {
   left: 8px;
   right: 8px;
   bottom: 8px;
-  display: flex;
+  display: none;
   flex-wrap: wrap;
   align-items: center;
   gap: 5px;
@@ -821,8 +821,15 @@ input:focus {
   font-size: 0.72rem;
 }
 
+.share-tile:hover .share-audio-controls,
+.share-tile:focus-within .share-audio-controls,
+.share-tile.selected .share-audio-controls {
+  display: flex;
+}
+
 .share-audio-controls label,
-.share-audio-controls button {
+.share-audio-controls button,
+.share-audio-controls output {
   flex: 0 0 auto;
 }
 
@@ -843,6 +850,12 @@ input:focus {
   max-width: 100%;
   margin: 0;
   padding: 0;
+}
+
+.share-audio-controls output {
+  min-width: 3em;
+  color: #fff;
+  text-align: right;
 }
 
 .local-share-tile > span,

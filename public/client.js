@@ -920,6 +920,20 @@ function createPeerConnection(peerId) {
       if (shareSlot >= 0) {
         const tile = document.createElement("div");
         tile.className = "video-tile share-tile";
+        tile.tabIndex = 0;
+        tile.setAttribute("role", "group");
+        tile.setAttribute("aria-label", `Partage d'écran ${shareSlot + 1}`);
+        const selectTile = () => {
+          Array.from(videoGrid.children).forEach((shareTile) => {
+            shareTile.classList.toggle("selected", shareTile === tile);
+          });
+        };
+        tile.addEventListener("click", selectTile);
+        tile.addEventListener("keydown", (keyEvent) => {
+          if (keyEvent.key !== "Enter" && keyEvent.key !== " ") return;
+          keyEvent.preventDefault();
+          selectTile();
+        });
         const extraVideo = document.createElement("video");
         extraVideo.autoplay = true;
         extraVideo.playsInline = true;
@@ -1067,14 +1081,19 @@ function ensureRemoteShareAudioControls(peerId, slot, tile) {
   volume.id = `share-audio-volume-${peerId}-${slot}`;
   volume.type = "range";
   volume.min = "0";
-  volume.max = "1";
-  volume.step = "0.05";
-  volume.value = String(shareAudio.audio.volume);
+  volume.max = "100";
+  volume.step = "5";
+  volume.value = String(Math.round(shareAudio.audio.volume * 100));
   volume.setAttribute("aria-label", `Volume de l'audio du partage ${slot + 1}`);
+  const volumeValue = document.createElement("output");
+  volumeValue.className = "share-audio-volume-value";
+  volumeValue.textContent = `${volume.value}%`;
   volume.addEventListener("input", () => {
-    shareAudio.audio.volume = Number(volume.value);
+    const percentage = Number(volume.value);
+    shareAudio.audio.volume = percentage / 100;
+    volumeValue.textContent = `${percentage}%`;
   });
-  controls.append(label, muteButton, volume, shareAudio.audio);
+  controls.append(label, muteButton, volume, volumeValue, shareAudio.audio);
   tile.appendChild(controls);
   shareAudio.controls = controls;
 }
