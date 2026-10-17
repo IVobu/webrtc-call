@@ -150,6 +150,7 @@ function getInfo(peerId) {
       name: "",
       avatar: { idle: "", talking: "" },
       speaking: false,
+      cameraEnabled: false,
       screenStreamId: null,
       screenActive: false,
       screenStreamIds: new Set(),
@@ -304,7 +305,9 @@ function toggleMic() {
 function toggleCam() {
   camEnabled = !camEnabled;
   if (localStream) localStream.getVideoTracks().forEach((t) => (t.enabled = camEnabled));
+  if (roomCode) socket.emit("update-profile", { name: peerName, avatar: { idle: avatarIdle, talking: avatarTalking }, cameraEnabled: camEnabled });
   updateControls();
+  updateTile("local");
 }
 
 // ---------- Tuiles ----------
@@ -380,7 +383,7 @@ function updateTile(peerId) {
   video.classList.remove("screen-share");
   if (video.srcObject !== camStream) video.srcObject = camStream || null;
 
-  if (isLocal && camEnabled && camStream) {
+  if ((isLocal && camEnabled || !isLocal && info.cameraEnabled) && camStream) {
     img.classList.add("hidden");
     img.classList.remove("bouncing");
     video.classList.remove("hidden");
@@ -1047,6 +1050,7 @@ function registerForRoom(code) {
     response.otherPeers.forEach((p) => {
       const info = getInfo(p.id);
       info.avatar = cleanAvatar(p.avatar);
+      info.cameraEnabled = !!p.cameraEnabled;
       ensureRemoteTile(p.id, p.name);
     });
 
@@ -1235,19 +1239,21 @@ socket.on("disconnect", () => {
   }
 });
 
-socket.on("peer-joined", ({ id, name, avatar }) => {
+socket.on("peer-joined", ({ id, name, avatar, cameraEnabled }) => {
   const info = getInfo(id);
   info.avatar = cleanAvatar(avatar);
+  info.cameraEnabled = !!cameraEnabled;
   ensureRemoteTile(id, name);
   callPeer(id);
 });
 
 socket.on("peer-left", ({ id }) => removePeer(id));
 
-socket.on("peer-updated", ({ id, name, avatar }) => {
+socket.on("peer-updated", ({ id, name, avatar, cameraEnabled }) => {
   const info = getInfo(id);
   info.name = name || info.name;
   if (avatar) info.avatar = cleanAvatar(avatar);
+  if (typeof cameraEnabled === "boolean") info.cameraEnabled = cameraEnabled;
   const tile = $(`tile-${id}`);
   if (tile) {
     const label = tile.querySelector(".video-label");
