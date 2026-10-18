@@ -829,13 +829,26 @@ function createPeerConnection(peerId, isOfferer) {
   };
 
   pc.onconnectionstatechange = () => {
+    if (peers.get(peerId) !== state) return;
+    const name = getInfo(peerId).name || "Un participant";
     if (pc.connectionState === "connected") {
       state.iceRestarts = 0;
-    } else if (pc.connectionState === "failed" && state.iceRestarts < 3) {
-      // On ne supprime plus le participant : on retente la connexion.
-      // La suppression se fait uniquement quand le serveur signale son départ.
-      state.iceRestarts++;
-      pc.restartIce();
+      showCallStatus("");
+    } else if (pc.connectionState === "disconnected") {
+      showCallStatus(`Connexion avec ${name} instable. Tentative de rétablissement…`);
+    } else if (pc.connectionState === "failed") {
+      if (state.iceRestarts < 3) {
+        // Garder la connexion et relancer ICE avant de considérer le pair perdu.
+        state.iceRestarts++;
+        showCallStatus(`Connexion avec ${name} interrompue. Nouvelle tentative (${state.iceRestarts}/3)…`);
+        try {
+          pc.restartIce();
+        } catch (err) {
+          console.warn("Redémarrage ICE impossible :", err);
+        }
+      } else {
+        showCallStatus(`Connexion avec ${name} impossible après plusieurs tentatives. Vérifie le réseau ou la configuration TURN.`);
+      }
     }
   };
 
@@ -895,6 +908,9 @@ async function processNegotiation(peerId, state, data) {
   } else if (data.type === "ice") {
     if (!data.candidate) return;
     if (!pc.remoteDescription) {
+      // ICE peut arriver avant le SDP : garder une file bornée pour éviter
+      // qu'un pair bruyant consomme une quantité illimitée de mémoire.
+      if (state.pendingCandidates.length >= 256) state.pendingCandidates.shift();
       state.pendingCandidates.push(data.candidate);
       return;
     }
@@ -944,8 +960,16 @@ function handleSignal(from, data) {
 
   // Traitement strictement dans l'ordre d'arrivée, pair par pair.
   state.queue = state.queue
-    .then(() => processNegotiation(from, state, data))
-    .catch((err) => console.error("Erreur signalisation:", err));
+    .then(() => {
+      // Un signal déjà en file ne doit pas toucher une connexion supprimée/fermée.
+      if (peers.get(from) !== state || state.pc.signalingState === "closed") return;
+      return processNegotiation(from, state, data);
+    })
+    .catch((err) => {
+      if (peers.get(from) === state && state.pc.signalingState !== "closed") {
+        console.error("Erreur signalisation:", err);
+      }
+    });
 }
 
 function removePeer(peerId) {
