@@ -18,30 +18,6 @@
       <input type="text" id="name-input" placeholder="Ton pseudo" maxlength="20">
     </div>
 
-    <details class="settings-panel">
-      <summary>Avatar réactif</summary>
-      <p>Images PNG/JPEG/GIF/WebP, 250 Ko max par image.</p>
-      <div class="avatar-file-settings">
-        <label for="avatar-idle-input">Avatar au repos</label>
-        <input id="avatar-idle-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp">
-        <label for="avatar-talking-input">Avatar quand tu parles</label>
-        <input id="avatar-talking-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp">
-      </div>
-      <label class="setting-option" for="avatar-bounce">
-        <input type="checkbox" id="avatar-bounce" checked>
-        Petit rebond quand tu parles
-      </label>
-      <label class="setting-option" for="avatar-dim-idle">
-        <input type="checkbox" id="avatar-dim-idle" checked>
-        Griser l'image au repos
-      </label>
-      <div class="avatar-previews">
-        <img id="avatar-idle-preview" alt="Aperçu de l'avatar au repos" class="hidden">
-        <img id="avatar-talking-preview" alt="Aperçu de l'avatar parlant" class="hidden">
-      </div>
-      <p id="avatar-status" class="settings-status" aria-live="polite"></p>
-    </details>
-
     <button id="create-btn" class="btn btn-primary">Creer un appel</button>
 
     <div class="divider"><span>ou</span></div>
@@ -53,139 +29,72 @@
 
     <button id="join-btn" class="btn btn-secondary">Rejoindre un appel</button>
 
+    <div class="divider"><span>Avatar réactif (optionnel)</span></div>
+
+    <div class="form-group">
+      <label for="avatar-idle-input">Image au repos (URL ou fichier)</label>
+      <input type="text" id="avatar-idle-input" placeholder="https://exemple.com/repos.gif">
+      <input type="file" id="avatar-idle-file" accept="image/*" class="file-input">
+    </div>
+
+    <div class="form-group">
+      <label for="avatar-talking-input">Image en parlant (URL ou fichier)</label>
+      <input type="text" id="avatar-talking-input" placeholder="https://exemple.com/parle.gif">
+      <input type="file" id="avatar-talking-file" accept="image/*" class="file-input">
+    </div>
+
     <p id="home-error" class="error"></p>
   </div>
 </div>
 
 <div id="call-screen" class="screen hidden">
-  <p id="media-status" class="settings-status" aria-live="polite"></p>
+  <div class="call-header">
+    <span id="room-label">Salle: </span>
+    <button id="settings-btn" class="btn btn-small" title="Réglages">Réglages</button>
+    <button id="copy-link-btn" class="btn btn-small">Copier le lien</button>
+    <button id="leave-btn" class="btn btn-small btn-danger">Quitter</button>
+  </div>
 
-  <div class="call-layout">
-    <aside class="participants-sidebar">
-      <div class="dock-panel-heading">
-        <h2>Participants <span id="participant-count"></span></h2>
-        <button id="participants-dock-btn" class="dock-btn" type="button" aria-pressed="false" title="Ancrer le panneau à gauche">Ancrer</button>
+  <div id="video-grid" class="video-grid">
+    <div class="video-tile" id="local-tile">
+      <video id="local-video" class="cam-video" autoplay muted playsinline></video>
+      <img id="local-avatar" class="avatar-img hidden" alt="">
+      <span class="video-label" id="local-label">Toi</span>
+      <div class="video-controls">
+        <button id="mic-btn" class="ctrl-btn active" title="Micro">Mic</button>
+        <button id="cam-btn" class="ctrl-btn active" title="Cam">Cam</button>
+        <button id="screen-btn" class="ctrl-btn" title="Partager l'ecran">Screen</button>
       </div>
-      <details class="room-menu">
-        <summary>Salle et invitations</summary>
-        <div class="room-menu-content">
-          <p id="room-label">Salle sécurisée</p>
-          <button id="copy-link-btn" class="btn btn-small">Copier le lien d'appel</button>
-          <button id="copy-code-btn" class="btn btn-small">Copier le code</button>
-          <button id="copy-overlay-link-btn" class="btn btn-small">Copier le lien OBS</button>
-          <button id="leave-btn" class="btn btn-small btn-danger">Quitter l'appel</button>
-        </div>
-      </details>
-      <div id="participants-list" class="participants-list"></div>
-    </aside>
-    <div id="participants-resizer" class="panel-resizer" role="separator" aria-label="Redimensionner le panneau participants" aria-orientation="vertical" tabindex="0"></div>
+    </div>
+  </div>
 
-    <main class="call-main">
-      <section class="screen-share-panel">
-        <h2>Partages d'écran</h2>
-        <div id="video-grid" class="screen-share-grid" aria-live="polite"></div>
-        <div id="local-shares" class="local-shares" aria-live="polite"></div>
-      </section>
-      <section class="avatar-panel">
-        <h2>Participants et avatars</h2>
-        <div id="avatar-strip" class="avatar-strip">
-          <div class="video-tile avatar-tile" id="local-tile">
-            <div id="local-avatar-fallback" class="avatar-fallback">Avatar</div>
-            <img id="local-avatar" class="avatar-view hidden" alt="Ton avatar">
-            <video id="local-video" class="hidden" autoplay muted playsinline></video>
-            <span class="video-label" id="local-label">Toi</span>
-            <div class="video-controls">
-              <button id="mic-btn" class="ctrl-btn active" type="button" title="Couper le micro" aria-label="Couper le micro" aria-pressed="true">
-                <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.93V21H8v2h8v-2h-3v-3.07A7 7 0 0 0 19 11Z"/></svg>
-              </button>
-              <button id="cam-btn" class="ctrl-btn" type="button" title="Activer la caméra" aria-label="Activer la caméra" aria-pressed="false">
-                <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M4 5h11a2 2 0 0 1 2 2v2.1l4-2.4v10.6l-4-2.4V17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm0 2v10h11V7Z"/></svg>
-              </button>
-              <button id="screen-btn" class="ctrl-btn" type="button" title="Partager un écran ou une fenêtre" aria-label="Partager un écran ou une fenêtre" aria-pressed="false">
-                <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M3 4h18v13H3V4Zm2 2v9h14V6H5Zm5 13h4v2h-4v-2Zm-2 3h8v-1H8v1Z"/></svg>
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
-    </main>
-    <div id="settings-resizer" class="panel-resizer" role="separator" aria-label="Redimensionner le panneau paramètres" aria-orientation="vertical" tabindex="0"></div>
+  <div id="participants-bar" class="participants-bar">
+    <span id="participant-count"></span>
+  </div>
+</div>
 
-    <aside class="call-settings">
-      <div class="dock-panel-heading">
-        <h2>Paramètres</h2>
-        <button id="settings-dock-btn" class="dock-btn" type="button" aria-pressed="false" title="Ancrer le panneau à droite">Ancrer</button>
-      </div>
-      <label class="setting-option pseudo-toggle" for="show-pseudonyms">
-        <input type="checkbox" id="show-pseudonyms" checked>
-        Afficher les pseudos
-      </label>
-      <details class="settings-panel call-avatar-settings">
-        <summary>Remplacer les images de l'avatar réactif</summary>
-        <p class="settings-status">PNG, JPEG, GIF ou WebP (250 Ko maximum). Les images enregistrées sont prévisualisées ici; importer un nouveau fichier remplace uniquement l'image du mode choisi.</p>
-        <div class="avatar-file-settings">
-          <label for="call-avatar-idle-input">Image/GIF au repos (silencieux)</label>
-          <input id="call-avatar-idle-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp">
-          <label for="call-avatar-talking-input">Image/GIF quand tu parles</label>
-          <input id="call-avatar-talking-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp">
-        </div>
-        <div class="avatar-previews">
-          <img id="call-avatar-idle-preview" alt="Aperçu de l'avatar au repos" class="hidden">
-          <img id="call-avatar-talking-preview" alt="Aperçu de l'avatar parlant" class="hidden">
-        </div>
-        <p id="call-avatar-status" class="settings-status" aria-live="polite"></p>
-      </details>
-      <details class="settings-panel screen-settings">
-        <summary>Périphériques d'entrée</summary>
-        <label for="audio-device-select">Microphone</label>
-        <select id="audio-device-select">
-          <option value="">Microphone par défaut</option>
-        </select>
-        <label for="camera-device-select">Caméra</label>
-        <select id="camera-device-select">
-          <option value="__default__">Caméra par défaut</option>
-          <option value="__off__">Caméra désactivée</option>
-        </select>
-      </details>
+<div id="settings-modal" class="modal hidden">
+  <div class="modal-content">
+    <h2>Réglages</h2>
 
-      <details class="settings-panel screen-settings">
-        <summary>Filtres du microphone</summary>
-        <label class="setting-option" for="echo-cancellation">
-          <input type="checkbox" id="echo-cancellation" checked>
-          Annulation de l'écho
-        </label>
-        <label class="setting-option" for="noise-suppression">
-          <input type="checkbox" id="noise-suppression" checked>
-          Réduction du bruit
-        </label>
-        <label class="setting-option" for="auto-gain-control">
-          <input type="checkbox" id="auto-gain-control" checked>
-          Volume automatique
-        </label>
-        <p id="audio-settings-status" class="settings-status" aria-live="polite"></p>
-      </details>
+    <label class="setting-row">
+      <input type="checkbox" id="bounce-enabled">
+      <span>Bounce de l'avatar à la parole</span>
+    </label>
 
-      <details class="settings-panel screen-settings">
-        <summary>Qualité du partage</summary>
-        <div class="screen-settings-controls">
-          <label for="screen-resolution">Résolution maximale</label>
-          <select id="screen-resolution">
-            <option value="540" selected>540p — économe</option>
-            <option value="720">720p</option>
-            <option value="1080">1080p</option>
-          </select>
-          <label for="screen-frame-rate">Images par seconde maximales</label>
-          <select id="screen-frame-rate">
-            <option value="15" selected>15 FPS — économe</option>
-            <option value="24">24 FPS</option>
-            <option value="30">30 FPS</option>
-            <option value="60">60 FPS</option>
-          </select>
-        </div>
-        <p id="screen-share-status" class="settings-status" aria-live="polite"></p>
-      </details>
-      <p class="overlay-link-note">Les liens d'appel et OBS donnent accès à la salle active. Partage-les seulement avec les personnes autorisées.</p>
-    </aside>
+    <label class="setting-row">
+      <span>Intensité du bounce</span>
+      <input type="range" id="bounce-intensity" min="1" max="1.5" step="0.05" value="1.15">
+      <span id="bounce-intensity-value">1.15</span>
+    </label>
+
+    <label class="setting-row">
+      <span>Sensibilité micro</span>
+      <input type="range" id="speaking-threshold" min="5" max="50" step="1" value="18">
+      <span id="speaking-threshold-value">18</span>
+    </label>
+
+    <button id="settings-close" class="btn btn-primary">Fermer</button>
   </div>
 </div>
 
