@@ -104,6 +104,14 @@ test("required interaction controls exist in the page and client", () => {
   assert.match(css, /\.screen-share-mute/);
 });
 
+test("WebRTC recovery guards stale peer queues and bounds pending ICE candidates", () => {
+  assert.match(client, /peers\.get\(from\) !== state \|\| state\.pc\.signalingState === "closed"/);
+  assert.match(client, /state\.pendingCandidates\.length >= 256/);
+  assert.match(client, /pc\.connectionState === "disconnected"/);
+  assert.match(client, /pc\.connectionState === "failed"/);
+  assert.match(client, /state\.iceRestarts < 3/);
+});
+
 test("screen-share and participant audio settings stay connected", () => {
   assert.match(client, /applyScreenAudioVolume\(person\.id, streamId/);
   assert.match(client, /screenAudioSettings\.set\(stream\.id, saved\)/);
