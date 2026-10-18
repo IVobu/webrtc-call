@@ -14,12 +14,6 @@ Navigateur A ◄──── WebRTC P2P ────► Navigateur B
 
 Le serveur Node.js ne fait qu'établir les connexions (signalisation). Une fois connectés, les médias (audio, vidéo, écran) circulent directement entre les navigateurs en P2P.
 
-## Confidentialité
-
-Les pseudos sont visibles par défaut et peuvent être masqués localement avec « Afficher les pseudos » dans la zone vidéo/avatars/partages; les noms textuels de la liste Participants restent toujours visibles. Ce choix et le pseudo sont conservés dans le stockage local du navigateur. Les avatars choisis sont transmis aux participants par la signalisation, donc choisis des images que tu acceptes de partager. Les largeurs et l'état ancré des panneaux participants/paramètres sont également mémorisés localement. Le lien de salle et la source navigateur OBS placent le code temporaire dans le fragment URL (`#room=...`), qui n'est pas envoyé dans la requête HTTP ni dans les journaux du serveur. Toute personne qui reçoit ce lien peut toutefois entrer dans l'appel tant que la salle est active; le fragment peut rester dans l'historique du navigateur, être copié ou apparaître dans une capture d'écran. Il est retiré de l'adresse après une jointure réussie et un nouvel appel génère un nouveau code. L'application n'affiche pas les adresses IP, candidats ICE ou descriptions SDP.
-
-WebRTC échange néanmoins des descriptions SDP et candidats ICE via le serveur de signalisation, puis avec les autres navigateurs ; des informations réseau peuvent donc être visibles par le serveur et les pairs selon le navigateur et le réseau. Le partage d'écran capture ce que tu choisis dans la boîte de dialogue du navigateur : vérifie la fenêtre ou l'écran sélectionné avant de partager.
-
 ## Prérequis
 
 - Node.js 16+
@@ -34,23 +28,14 @@ npm install
 ## Lancement
 
 ```bash
-npm start
+node server.js
 ```
 
 Puis ouvre http://localhost:3000 dans ton navigateur.
 
-Par défaut, le serveur écoute uniquement sur ta machine (`127.0.0.1`). Pour le rendre accessible aux autres appareils de ton réseau local, définis `HOST=0.0.0.0` avant de le lancer.
-
-Sous PowerShell :
-
-```powershell
-$env:HOST = "0.0.0.0"
-npm start
-```
-
 ## Inviter des personnes à distance
 
-Pour inviter un ami hors de ton réseau local, utilise un tunnel HTTPS vers le serveur local. Le serveur reste lié à `127.0.0.1` ; le tunnel fournit l'accès public temporaire :
+Le serveur écoute sur le port 3000 de ta machine. Pour que des amis à distance puissent se connecter, expose ton serveur :
 
 ### Option 1 : Cloudflare Tunnel (recommandé, gratuit)
 
@@ -65,33 +50,52 @@ cloudflared tunnel --url http://localhost:3000
 npx ngrok http 3000
 ```
 
-### Même réseau local
+### Option 3 : même réseau local
 
-Lance le serveur avec `HOST=0.0.0.0`, puis donne à ton ami ton IP locale et le port (ex: `http://192.168.1.42:3000`). L'accès direct par HTTP peut ne pas autoriser la caméra et le micro ; HTTPS est recommandé.
+Donne simplement ton IP locale (ex: `http://192.168.1.42:3000`).
 
 ## Fonctionnement
 
-1. **Créer un appel** — clic sur « Créer un appel »; un code de 6 caractères est généré.
-2. **Inviter** — ouvre « Salle et invitations » dans le panneau Participants pour copier le lien d'appel ou le code. Le code n'est plus affiché dans la barre supérieure; il n'apparaît que dans ce menu dépliant. Le lien préremplit le code via le fragment URL; à la jointure réussie, le fragment est retiré de la barre d'adresse. Partage le lien uniquement avec les personnes autorisées.
-3. **Pseudo** — le nom choisi est restauré depuis le stockage local du navigateur au prochain passage sur cet appareil.
-4. **OBS Browser Source** — dans OBS, ajoute une source navigateur et utilise le lien fourni par « Copier le lien OBS ». La page transparente affiche les pseudos et avatars réactifs des personnes présentes sans rejoindre l'appel comme participant, sans demander micro/caméra et sans transmettre de média. Depuis la liste des participants, ouvre un nom pour copier un lien OBS filtré sur cette personne ou un lien de groupe. Ces liens sont propres à cette application, pas des liens FugiTech/Reactive. Le filtre et le code sont dans le fragment URL, qui n'est pas envoyé au serveur dans la requête HTTP; le lien individuel ne présente que l'identifiant choisi et le lien de groupe tous les participants. Garde ces liens privés, car ils donnent accès aux avatars/noms de la salle active. Si la salle se termine, la source affiche l'état terminé.
-5. **Micro et caméra** — le micro est nécessaire pour rejoindre. La caméra est désactivée par défaut pour préserver la confidentialité; choisis-la dans les périphériques puis active « Caméra » si nécessaire.
-6. **Périphériques d'entrée** — sélectionne le microphone et la caméra dans la colonne Paramètres. Les changements s'appliquent pendant l'appel aux pairs connectés; si un appareil est débranché, choisis-en un autre. Les noms des appareils restent dans les menus locaux.
-7. **Avatar réactif** — importe séparément des images PNG, JPEG, GIF ou WebP (250 Ko maximum par image) pour le repos et la parole. Les options « petit rebond quand tu parles » et « griser l'image au repos » sont activées par défaut et réglables; elles utilisent uniquement des effets CSS et respectent la réduction des animations du système. La signature binaire est contrôlée en plus du type déclaré; SVG, URL distantes, archives et profils natifs ne sont pas acceptés. L'état parlant est détecté localement à partir du niveau sonore; seul l'état binaire parlant/silencieux et les images choisies sont signalés aux pairs et à la source OBS. Les GIF peuvent rester animés. La page publique [FugiTech Reactive Images](https://reactive.fugi.tech/) consultée sans compte présente seulement une connexion Discord; elle ne documente ni format d'export, ni valeurs par défaut. Ces effets sont des choix sobres propres à l'application, pas une parité revendiquée avec Reactive.
-8. **Filtres audio** — l'annulation de l'écho, la réduction du bruit et le volume automatique utilisent les traitements natifs du navigateur lorsqu'ils sont pris en charge. Ils sont activés par défaut et réglables pendant l'appel. Leur effet dépend du navigateur et du matériel ; ce n'est pas un moteur IA tiers identique à celui de Discord.
-9. **Partage d'écran** — tu peux partager jusqu'à deux écrans ou fenêtres simultanément, en plus de la caméra. Chaque capture demande une action utilisateur et l'audio est demandé par défaut; il n'y a pas d'option pour le désactiver dans l'application. Le navigateur garde le choix final : selon le navigateur et la source choisie dans le sélecteur, il peut ne proposer aucune piste audio, ou ne capturer que l'audio d'un onglet. Si aucune piste n'est fournie, la vidéo continue et l'application l'indique. Vérifie ce qui est partagé : l'audio peut inclure notifications/sons confidentiels et augmente l'usage réseau/CPU. Chaque source possède son propre aperçu et bouton d'arrêt; les pairs voient chaque flux séparément et peuvent régler le volume/couper l'audio de chaque partage indépendamment du micro et des autres sources. La capture est limitée par défaut à 540p/15 FPS ; la résolution et la fréquence maximale peuvent être ajustées pour toutes les sources actives. Le panneau de partage et chaque vignette peuvent être redimensionnés localement; masquer une vignette ou la redimensionner ne modifie pas la capture ni la taille transmise aux pairs. Les dimensions ne sont pas conservées après la fermeture de la vignette ou de l'appel.
-10. **Contrôles et disposition** — la liste des participants à gauche permet de couper/rétablir l'audio distant ou d'ajuster son volume indépendamment. Dans une tuile de partage reçue, sélectionne ou survole la tuile pour afficher ses propres commandes audio : curseur 0–100 et mute, indépendants du micro et des autres partages. Un clic sur un participant ouvre les liens OBS individuel et de groupe. Le menu « Salle et invitations » du même panneau contient le code, les liens à copier et le bouton pour quitter. Les commandes locales micro, caméra et partage d'écran sont des icônes avec libellés accessibles. Chaque partage reçu/émis peut être masqué dans ta propre vue sans interrompre le flux. Le titre de chaque partage apparaît discrètement au survol ou au focus clavier. « Afficher les pseudos » masque uniquement les noms dans la zone vidéo/avatars/partages, pas ceux de la liste Participants; le choix est mémorisé localement. Dans Paramètres > « Remplacer les images de l'avatar réactif », les images au repos et quand tu parles peuvent être importées/remplacées séparément; elles sont prévisualisées, enregistrées localement et transmises aux pairs/à la source OBS. Les partages d'écran sont affichés au-dessus d'une seule rangée regroupant ton avatar/caméra et ceux des autres participants. Les panneaux latéraux peuvent être redimensionnés avec leurs séparateurs ou ancrés sur leur bord pour agrandir la zone centrale; largeur et état ancré sont mémorisés sur l'appareil. Sur les écrans étroits, les panneaux redeviennent empilés et peuvent nécessiter un défilement ciblé.
-11. **Quitter** — le code de salle est supprimé une fois tout le monde parti.
+1. **Créer un appel** — clic sur "Créer un appel", un code de 6 caractères est généré
+2. **Inviter** — envoie le code (ou le lien avec `?room=CODE`) à tes amis
+3. **Appel** — micro, caméra et partage d'écran fonctionnent en P2P
+4. **Quitter** — le code de salle est supprimé une fois tout le monde parti
+
+## Avatar réactif
+
+Chaque participant peut définir deux images (URL ou fichier) sur la page d'accueil :
+
+- **Image au repos** — affichée par défaut
+- **Image en parlant** — affichée quand le micro détecte la parole
+
+La détection de parole se fait localement via la Web Audio API (niveau du micro). L'état
+`parle / ne parle pas` est ensuite diffusé aux autres participants pour que leur tuile
+mette à jour l'avatar.
+
+### Réglages (bouton "Réglages" en appel)
+
+| Réglage | Défaut | Description |
+|---------|--------|-------------|
+| Bounce de l'avatar à la parole | **désactivé** | Anime l'avatar (zoom) quand tu parles |
+| Intensité du bounce | 1.15 | Facteur d'échelle de l'animation |
+| Sensibilité micro | 18 | Seuil de volume pour considérer que tu parles |
+
+Les réglages et les images sont sauvegardés dans le `localStorage` du navigateur.
+
+## Partage d'écran
+
+Le partage d'écran est propagé à tous les participants. Quand un participant partage son
+écran, sa tuile passe de l'avatar (ou de la caméra) à l'écran partagé, puis revient à
+l'état précédent à la fin du partage.
 
 ## Fichiers
 
 | Fichier | Rôle |
 |---------|------|
-| `server.js` | Serveur Express + Socket.io (signalisation) |
+| `server.js` | Serveur Express + Socket.io (signalisation + broadcast) |
 | `public/index.html` | Interface utilisateur |
 | `public/style.css` | Styles |
-| `public/client.js` | Logique WebRTC (connexions P2P, médias) |
-| `public/overlay.html`, `public/overlay.js`, `public/overlay.css` | Source navigateur OBS en lecture seule |
+| `public/client.js` | Logique WebRTC (connexions P2P, médias, avatar réactif) |
 
 ## Limites
 
