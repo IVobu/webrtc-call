@@ -518,3 +518,8 @@ body { align-items: stretch; justify-content: stretch; }
 .screen-share-tile { width:auto; height:auto; min-width:240px; min-height:180px; max-width:100%; resize:both; overflow:hidden; }
 .screen-share-tile .video-label { cursor:grab; user-select:none; }
 .screen-share-tile .video-label:active { cursor:grabbing; }
+
+
+/* Status messages stay visible during calls (permissions, sharing, connection). */
+.call-status { margin: 0; padding: 10px 12px; border-radius: 8px; color: #ffd6a5; background: #392b1b; border: 1px solid #805b2b; font-size: .9rem; }
+.call-status.hidden { display: none !important; }
