@@ -76,6 +76,7 @@ test("HTML IDs are unique", () => {
 test("required interaction controls exist in the page and client", () => {
   for (const id of [
     "video-grid",
+    "call-status",
     "right-panel",
     "participants-list",
     "avatar-strip",
@@ -90,6 +91,8 @@ test("required interaction controls exist in the page and client", () => {
   ]) {
     assert.match(html, new RegExp(`id=["']${id}["']`), `missing HTML id: ${id}`);
   }
+  assert.match(client, /function mediaErrorMessage/);
+  assert.match(client, /function showCallStatus/);
   assert.match(client, /function renderScreenShareTile/);
   assert.match(client, /function applyScreenAudioVolume/);
   assert.match(client, /screen-share-mute/);
