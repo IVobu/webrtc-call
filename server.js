@@ -13,11 +13,22 @@ const io = new Server(server, {
 
 app.use(express.static(path.join(__dirname, "public")));
 
+app.get("/ice-config", (req, res) => {
+  const turnServers = process.env.TURN_SERVERS ? JSON.parse(process.env.TURN_SERVERS) : [];
+  res.json({
+    iceServers: [
+      { urls: "stun:stun.l.google.com:19302" },
+      { urls: "stun:stun1.l.google.com:19302" },
+      ...turnServers,
+    ],
+  });
+});
+
 const rooms = new Map();
 
 function getRoom(code) {
   if (!rooms.has(code)) {
-    rooms.set(code, { peers: new Map(), createdAt: Date.now() });
+    rooms.set(code, { peers: new Map(), sharing: new Map(), createdAt: Date.now() });
   }
   return rooms.get(code);
 }
@@ -50,10 +61,12 @@ io.on("connection", (socket) => {
       .filter((p) => p.socketId !== peerId)
       .map((p) => ({ id: p.socketId, name: p.name }));
 
+    const sharingPeers = [...room.sharing.keys()];
+
     socket.to(code).emit("peer-joined", { id: peerId, name: peerName || "Anonyme" });
 
     console.log(`[+] ${peerName || peerId} a rejoint ${code} (${room.peers.size} en ligne)`);
-    callback({ success: true, peerId, otherPeers });
+    callback({ success: true, peerId, otherPeers, sharingPeers });
   });
 
   socket.on("signal", ({ to, data }) => {
@@ -64,6 +77,26 @@ io.on("connection", (socket) => {
   socket.on("broadcast", (data) => {
     if (!currentRoom) return;
     socket.to(currentRoom).emit("broadcast", { from: peerId, data });
+  });
+
+  socket.on("screen-share-start", () => {
+    if (!currentRoom || !peerId) return;
+    const room = rooms.get(currentRoom);
+    if (room) {
+      room.sharing.set(peerId, true);
+      socket.to(currentRoom).emit("peer-screen-share", { id: peerId, sharing: true });
+      console.log(`[${currentRoom}] ${peerId} a commencé le partage d'écran`);
+    }
+  });
+
+  socket.on("screen-share-stop", () => {
+    if (!currentRoom || !peerId) return;
+    const room = rooms.get(currentRoom);
+    if (room) {
+      room.sharing.delete(peerId);
+      socket.to(currentRoom).emit("peer-screen-share", { id: peerId, sharing: false });
+      console.log(`[${currentRoom}] ${peerId} a arrêté le partage d'écran`);
+    }
   });
 
   socket.on("leave-room", () => {
@@ -79,6 +112,10 @@ io.on("connection", (socket) => {
     const room = rooms.get(currentRoom);
     if (room) {
       room.peers.delete(peerId);
+      if (room.sharing.has(peerId)) {
+        room.sharing.delete(peerId);
+        socket.to(currentRoom).emit("peer-screen-share", { id: peerId, sharing: false });
+      }
       socket.to(currentRoom).emit("peer-left", { id: peerId });
       cleanupRoom(currentRoom);
     }

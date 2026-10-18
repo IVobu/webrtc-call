@@ -337,6 +337,22 @@ input[type="text"]:focus {
   font-weight: 600;
 }
 
+.setting-row select {
+  flex: 1;
+  padding: 8px 12px;
+  border: 2px solid #233554;
+  border-radius: 8px;
+  background: #0a192f;
+  color: #fff;
+  font-size: 0.9rem;
+  outline: none;
+  cursor: pointer;
+}
+
+.setting-row select:focus {
+  border-color: #00d4ff;
+}
+
 @media (max-width: 600px) {
   .video-grid {
     grid-template-columns: 1fr;
