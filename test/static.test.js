@@ -14,6 +14,14 @@ test("client and server JavaScript parse without syntax errors", () => {
   assert.doesNotThrow(() => new Function(server));
 });
 
+test("ICE signaling validates and bounds untrusted candidate fields", () => {
+  assert.match(server, /candidate\.candidate\.length > 10_000/);
+  assert.match(server, /sdpMid\.length > 256/);
+  assert.match(server, /sdpMLineIndex > 65_535/);
+  assert.match(server, /usernameFragment\.length > 256/);
+  assert.match(server, /candidate: \{ candidate: candidate\.candidate, sdpMid, sdpMLineIndex, usernameFragment \}/);
+});
+
 test("HTML IDs are unique", () => {
   const ids = [...html.matchAll(/\bid=["']([^"']+)["']/g)].map((match) => match[1]);
   const duplicates = ids.filter((id, index) => ids.indexOf(id) !== index);
