@@ -42,6 +42,9 @@ test("required interaction controls exist in the page and client", () => {
   assert.match(client, /screen-share-mute/);
   assert.match(client, /maxFramerate = SETTINGS\.videoFps/);
   assert.match(client, /peerAudioSettings\.get\(ownerId\)/);
+  assert.match(client, /function releaseMediaElement/);
+  assert.match(client, /function releaseScreenShareTile/);
+  assert.match(client, /forEach\(releaseMediaElement\)/);
   assert.match(css, /\.screen-share-mute/);
 });
 
