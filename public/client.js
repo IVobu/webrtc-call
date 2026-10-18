@@ -46,6 +46,7 @@ const screenBtn = document.getElementById("screen-btn");
 const participantCount = document.getElementById("participant-count");
 const audioSettingsStatus = document.getElementById("audio-settings-status");
 const audioDeviceSelect = document.getElementById("audio-device-select");
+const speakerDeviceSelect = document.getElementById("speaker-select");
 const cameraDeviceSelect = document.getElementById("camera-device-select");
 const audioFilterControls = [
   { key: "echoCancellation", label: "annulation de l'écho", input: document.getElementById("echo-cancellation") },
@@ -90,6 +91,7 @@ const peers = new Map();
 const audioSenders = new Map();
 const videoSenders = new Map();
 const shareSenders = new Map();
+const shareTransceivers = new Map();
 const shareAudioSenders = new Map();
 const shareSetup = new Map();
 const remoteVideos = new Map();
@@ -99,6 +101,7 @@ const remoteShareAudio = new Map();
 const participantRows = new Map();
 let localParticipantRow = null;
 let activeAudioDeviceId = "";
+let activeSinkDeviceId = "";
 let activeCameraDeviceId = "";
 let switchingAudioDevice = false;
 let switchingCameraDevice = false;
@@ -678,10 +681,16 @@ async function refreshInputDevices() {
     const devices = await navigator.mediaDevices.enumerateDevices();
     const audioDevices = devices.filter((device) => device.kind === "audioinput");
     const videoDevices = devices.filter((device) => device.kind === "videoinput");
+    const audioOutputDevices = devices.filter((device) => device.kind === "audiooutput");
     const audioSelectedAvailable = replaceSelectOptions(audioDeviceSelect, audioDevices, {
       value: "",
       label: "Microphone par défaut",
       deviceLabel: "Microphone",
+    });
+    const speakerSelectedAvailable = replaceSelectOptions(speakerDeviceSelect, audioOutputDevices, {
+      value: "",
+      label: "Haut-parleur par défaut",
+      deviceLabel: "Haut-parleur",
     });
     const cameraSelectedAvailable = replaceSelectOptions(cameraDeviceSelect, videoDevices, {
       value: "__default__",
@@ -692,9 +701,12 @@ async function refreshInputDevices() {
 
     if (activeAudioDeviceId && !audioDevices.some((device) => device.deviceId === activeAudioDeviceId)) {
       mediaStatus.textContent = "Le microphone actif a été débranché. Choisis un autre périphérique d'entrée.";
+    } else if (activeSinkDeviceId && !audioOutputDevices.some((device) => device.deviceId === activeSinkDeviceId)) {
+      mediaStatus.textContent = "Le haut-parleur actif a été débranché. Choisis un autre périphérique de sortie.";
     } else if (activeCameraDeviceId && !videoDevices.some((device) => device.deviceId === activeCameraDeviceId)) {
       mediaStatus.textContent = "La caméra active a été débranchée. Choisis une autre caméra ou désactive-la.";
     } else if ((!audioSelectedAvailable && audioDeviceSelect.value) ||
+               (!speakerSelectedAvailable && speakerDeviceSelect.value) ||
                (!cameraSelectedAvailable && cameraDeviceSelect.value !== "__default__" &&
                 cameraDeviceSelect.value !== "__off__")) {
       mediaStatus.textContent = "Un périphérique sélectionné n'est plus disponible. Choisis-en un autre.";
@@ -892,7 +904,17 @@ function createPeerConnection(peerId) {
     }
   };
 
-  pc.ontrack = (event) => {
+  pc.onnegotiationneeded = async () => {
+    try {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      socket.emit("signal", { to: peerId, data: { type: "sdp", sdp: pc.localDescription } });
+    } catch (err) {
+      console.error("Erreur de renégociation:", err);
+    }
+  };
+
+  pc.ontrack = async (event) => {
     if (event.track.kind === "audio") {
       const peerShareAudioSenders = shareAudioSenders.get(peerId) || [];
       const shareAudioSlot = event.transceiver
@@ -902,7 +924,10 @@ function createPeerConnection(peerId) {
         attachRemoteShareAudio(peerId, shareAudioSlot, event.track);
       } else {
         const audio = remoteAudio.get(peerId);
-        if (audio) audio.srcObject = new MediaStream([event.track]);
+        if (audio) {
+          audio.srcObject = new MediaStream([event.track]);
+          await applySinkId(audio, activeSinkDeviceId);
+        }
       }
       return;
     }
@@ -910,10 +935,16 @@ function createPeerConnection(peerId) {
     const stream = event.streams[0] || new MediaStream([event.track]);
     const peerStreamVideos = remoteVideos.get(peerId);
     if (!peerStreamVideos) return;
-    const peerShareSlots = shareSenders.get(peerId) || [];
-    const shareSlot = event.transceiver
-      ? peerShareSlots.indexOf(event.transceiver.sender)
+    const peerShareTransceivers = shareTransceivers.get(peerId) || [];
+    let shareSlot = event.transceiver
+      ? peerShareTransceivers.indexOf(event.transceiver)
       : -1;
+    // Fallback: match by mid if object identity fails (e.g. transceiver reused after renegotiation)
+    if (shareSlot < 0 && event.transceiver?.mid) {
+      shareSlot = peerShareTransceivers.findIndex(
+        (t) => t.mid && t.mid === event.transceiver.mid
+      );
+    }
     const streamKey = shareSlot >= 0 ? `share-${shareSlot}` : "camera";
     let video = peerStreamVideos.get(streamKey);
     if (!video) {
@@ -963,6 +994,7 @@ function createPeerConnection(peerId) {
       peerStreamVideos.set(streamKey, video);
     }
     video.srcObject = stream;
+    await applySinkId(video, activeSinkDeviceId);
     if (shareSlot < 0) {
       video.classList.toggle("hidden", !remoteCameraStates.get(peerId));
       updateRemoteAvatar(peerId);
@@ -1000,9 +1032,10 @@ function createPeerConnection(peerId) {
   const videoSender = cameraTrack
     ? pc.addTrack(cameraTrack, localStream)
     : pc.addTransceiver("video", { direction: "sendrecv" }).sender;
-  const peerShareSenders = Array.from({ length: MAX_SCREEN_SHARES }, () =>
-    pc.addTransceiver("video", { direction: "sendrecv" }).sender
+  const peerShareTransceivers = Array.from({ length: MAX_SCREEN_SHARES }, () =>
+    pc.addTransceiver("video", { direction: "sendrecv" })
   );
+  const peerShareSenders = peerShareTransceivers.map((t) => t.sender);
   const peerShareAudioSenders = Array.from({ length: MAX_SCREEN_SHARES }, () =>
     pc.addTransceiver("audio", { direction: "sendrecv" }).sender
   );
@@ -1011,6 +1044,7 @@ function createPeerConnection(peerId) {
   audioSenders.set(peerId, audioSender);
   videoSenders.set(peerId, videoSender);
   shareSenders.set(peerId, peerShareSenders);
+  shareTransceivers.set(peerId, peerShareTransceivers);
   shareAudioSenders.set(peerId, peerShareAudioSenders);
   shareSetup.set(peerId, Promise.all(Array.from(shareSources.values()).flatMap((source) => [
     peerShareSenders[source.slot].replaceTrack(source.track),
@@ -1259,6 +1293,25 @@ async function switchAudioDevice() {
     mediaStatus.textContent = `Microphone inchangé : ${getMediaAccessErrorMessage(error, "micro")}`;
   } finally {
     switchingAudioDevice = false;
+  }
+}
+
+async function applySinkId(element, deviceId) {
+  if (!deviceId || typeof element.setSinkId !== "function") return;
+  try {
+    await element.setSinkId(deviceId);
+  } catch (error) {
+    console.error("Erreur de sélection du périphérique de sortie audio:", error);
+  }
+}
+
+async function switchAudioOutputDevice() {
+  if (!speakerDeviceSelect) return;
+  const deviceId = speakerDeviceSelect.value;
+  activeSinkDeviceId = deviceId;
+  const mediaElements = document.querySelectorAll("video, audio");
+  for (const element of mediaElements) {
+    await applySinkId(element, deviceId);
   }
 }
 
@@ -1845,6 +1898,7 @@ micBtn.addEventListener("click", toggleMic);
 camBtn.addEventListener("click", toggleCam);
 screenBtn.addEventListener("click", startScreenShare);
 audioDeviceSelect.addEventListener("change", switchAudioDevice);
+speakerDeviceSelect.addEventListener("change", switchAudioOutputDevice);
 cameraDeviceSelect.addEventListener("change", switchCameraDevice);
 avatarIdleInput.addEventListener("change", () =>
   importAvatar(avatarIdleInput, "idle", avatarIdlePreview)
