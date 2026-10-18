@@ -6,20 +6,44 @@ const path = require("node:path");
 const root = path.resolve(__dirname, "..");
 const client = fs.readFileSync(path.join(root, "public", "client.js"), "utf8");
 const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+const signaling = fs.readFileSync(path.join(root, "lib", "signaling.js"), "utf8");
+const { cleanSignal } = require("../lib/signaling");
 const html = fs.readFileSync(path.join(root, "public", "index.html"), "utf8");
 const css = fs.readFileSync(path.join(root, "public", "style.css"), "utf8");
 
 test("client and server JavaScript parse without syntax errors", () => {
   assert.doesNotThrow(() => new Function(client));
   assert.doesNotThrow(() => new Function(server));
+  assert.doesNotThrow(() => new Function(signaling));
 });
 
 test("ICE signaling validates and bounds untrusted candidate fields", () => {
-  assert.match(server, /candidate\.candidate\.length > 10_000/);
-  assert.match(server, /sdpMid\.length > 256/);
-  assert.match(server, /sdpMLineIndex > 65_535/);
-  assert.match(server, /usernameFragment\.length > 256/);
-  assert.match(server, /candidate: \{ candidate: candidate\.candidate, sdpMid, sdpMLineIndex, usernameFragment \}/);
+  assert.match(signaling, /candidate\.candidate\.length > 10_000/);
+  assert.match(signaling, /sdpMid\.length > 256/);
+  assert.match(signaling, /sdpMLineIndex > 65_535/);
+  assert.match(signaling, /usernameFragment\.length > 256/);
+  assert.match(signaling, /candidate: \{ candidate: candidate\.candidate, sdpMid, sdpMLineIndex, usernameFragment \}/);
+});
+
+test("ICE validator accepts valid candidates and rejects malformed payloads", () => {
+  const valid = cleanSignal({
+    type: "ice",
+    candidate: {
+      candidate: "candidate:1 1 UDP 2122260223 192.0.2.1 5000 typ host",
+      sdpMid: "0",
+      sdpMLineIndex: 0,
+      usernameFragment: "abc",
+      unexpected: "must not be forwarded",
+    },
+  });
+  assert.equal(valid.type, "ice");
+  assert.equal(valid.candidate.unexpected, undefined);
+  assert.equal(valid.candidate.candidate.startsWith("candidate:"), true);
+  assert.equal(cleanSignal({ type: "ice", candidate: { candidate: "x".repeat(10_001) } }), null);
+  assert.equal(cleanSignal({ type: "ice", candidate: { candidate: "x", sdpMLineIndex: -1 } }), null);
+  assert.equal(cleanSignal({ type: "ice", candidate: { candidate: "x", sdpMid: 5 } }), null);
+  assert.equal(cleanSignal({ type: "ice", candidate: [] }), null);
+  assert.equal(cleanSignal({ type: "ice", candidate: { candidate: "x", usernameFragment: "y".repeat(257) } }), null);
 });
 
 test("HTML IDs are unique", () => {
