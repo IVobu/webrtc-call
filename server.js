@@ -94,10 +94,21 @@ function cleanSignal(data) {
   }
 
   if (data.type === "ice") {
-    if (data.candidate && typeof data.candidate === "object") {
-      return { type: "ice", candidate: data.candidate };
-    }
-    return null;
+    const candidate = data.candidate;
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return null;
+    if (typeof candidate.candidate !== "string" || candidate.candidate.length > 10_000) return null;
+    const sdpMid = candidate.sdpMid == null ? null : candidate.sdpMid;
+    const sdpMLineIndex = candidate.sdpMLineIndex == null ? null : candidate.sdpMLineIndex;
+    const usernameFragment = candidate.usernameFragment == null ? null : candidate.usernameFragment;
+    if (sdpMid !== null && (typeof sdpMid !== "string" || sdpMid.length > 256)) return null;
+    if (sdpMLineIndex !== null && (!Number.isInteger(sdpMLineIndex) || sdpMLineIndex < 0 || sdpMLineIndex > 65_535)) return null;
+    if (usernameFragment !== null && (typeof usernameFragment !== "string" || usernameFragment.length > 256)) return null;
+
+    // Ne relayer que les champs ICE attendus, jamais un objet arbitraire fourni par le client.
+    return {
+      type: "ice",
+      candidate: { candidate: candidate.candidate, sdpMid, sdpMLineIndex, usernameFragment },
+    };
   }
 
   if (data.type === "screen") {
