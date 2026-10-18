@@ -27,6 +27,17 @@ Navigateur A ◄──── WebRTC P2P ────► Navigateur B
        └────────── (Socket.io) ─────────┘
 ```
 
+## Vérifications
+
+Lance les tests statiques avec :
+
+```bash
+npm install
+npm test
+```
+
+GitHub Actions exécute aussi ces tests à chaque mise à jour de la branche et sur la pull request. Ils vérifient la syntaxe JavaScript, l'unicité des identifiants HTML et la présence des connexions principales entre commandes et fonctionnalités. Ils ne simulent pas les permissions du navigateur ni un véritable appel WebRTC.
+
 Le serveur Node.js gère la signalisation. Les médias circulent directement entre navigateurs lorsque la connectivité réseau le permet.
 
 ## Fonctions présentes dans cette branche de travail
