@@ -46,6 +46,27 @@ test("ICE validator accepts valid candidates and rejects malformed payloads", ()
   assert.equal(cleanSignal({ type: "ice", candidate: { candidate: "x", usernameFragment: "y".repeat(257) } }), null);
 });
 
+test("SDP and screen signaling accept only supported bounded payloads", () => {
+  assert.deepEqual(cleanSignal({ type: "sdp", sdp: { type: "offer", sdp: "v=0\\r\\n" } }), {
+    type: "sdp",
+    sdp: { type: "offer", sdp: "v=0\\r\\n" },
+  });
+  assert.deepEqual(cleanSignal({ type: "sdp", sdp: { type: "pranswer", sdp: "x" } }), null);
+  assert.deepEqual(cleanSignal({ type: "sdp", sdp: { type: "answer", sdp: "x".repeat(200_000) } }), null);
+  assert.deepEqual(cleanSignal({ type: "sdp", sdp: { type: "offer", sdp: 7 } }), null);
+  assert.deepEqual(cleanSignal({ type: "screen", sharing: 1, streamId: "screen-1" }), {
+    type: "screen",
+    sharing: true,
+    streamId: "screen-1",
+  });
+  assert.deepEqual(cleanSignal({ type: "screen", sharing: false, streamId: "s".repeat(120) }), {
+    type: "screen",
+    sharing: false,
+    streamId: "s".repeat(100),
+  });
+  assert.equal(cleanSignal({ type: "unknown" }), null);
+});
+
 test("HTML IDs are unique", () => {
   const ids = [...html.matchAll(/\bid=["']([^"']+)["']/g)].map((match) => match[1]);
   const duplicates = ids.filter((id, index) => ids.indexOf(id) !== index);
