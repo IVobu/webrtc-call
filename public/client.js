@@ -40,6 +40,7 @@ const panelToggle = $("panel-toggle");
 const panelClose = $("panel-close");
 const rightPanel = $("right-panel");
 const stageEmpty = $("stage-empty");
+const callStatus = $("call-status");
 const settingsBtnSecondary = $("settings-btn-secondary");
 const renameInput = $("rename-input");
 const renameSave = $("rename-save");
@@ -215,6 +216,21 @@ function saveSettings() {
 }
 
 // ---------- Médias locaux ----------
+function showCallStatus(message) {
+  if (!callStatus) return;
+  callStatus.textContent = message || "";
+  callStatus.classList.toggle("hidden", !message);
+}
+
+function mediaErrorMessage(err) {
+  if (!window.isSecureContext) return "Le micro et la caméra nécessitent une connexion sécurisée (HTTPS ou localhost). Tu peux rejoindre sans média pour le moment.";
+  const name = err && err.name;
+  if (name === "NotAllowedError" || name === "PermissionDeniedError") return "Autorisation du micro/de la caméra refusée. Vérifie les permissions du navigateur et réessaie depuis les réglages du site.";
+  if (name === "NotFoundError" || name === "DevicesNotFoundError") return "Aucun micro ou caméra compatible n’a été trouvé. Tu peux rejoindre sans média.";
+  if (name === "NotReadableError" || name === "TrackStartError") return "Le micro ou la caméra est déjà utilisé(e) ou inaccessible. Ferme les autres applications qui l’utilisent, puis réessaie.";
+  return "Impossible d’accéder au micro ou à la caméra. Vérifie les permissions et les appareils connectés. Tu peux rejoindre sans média.";
+}
+
 async function getLocalStream() {
   const audio = { echoCancellation: SETTINGS.echoCancellation, noiseSuppression: SETTINGS.noiseSuppression };
   const height = SETTINGS.videoHeight;
@@ -224,17 +240,19 @@ async function getLocalStream() {
     { video: false, audio }, // repli : micro seul si pas de caméra
   ];
 
+  let lastMediaError = null;
   for (const constraints of attempts) {
     try {
       localStream = await navigator.mediaDevices.getUserMedia(constraints);
       break;
     } catch (err) {
+      lastMediaError = err;
       console.error("Erreur getUserMedia:", err);
     }
   }
 
   if (!localStream) {
-    alert("Impossible d'accéder au micro/caméra. Tu rejoins sans média (tu pourras voir et entendre les autres). Vérifie les permissions.");
+    showCallStatus(mediaErrorMessage(lastMediaError));
     return false;
   }
 
@@ -243,6 +261,7 @@ async function getLocalStream() {
   localStream.getVideoTracks().forEach((t) => (t.enabled = camEnabled));
 
   localVideo.srcObject = localStream;
+  showCallStatus("");
   applyLocalMediaSettings();
   updateControls();
   startSpeakingDetection();
@@ -973,8 +992,14 @@ async function startScreenShare() {
       applyScreenToPeer(state, stream);
     }
     await applyLocalMediaSettings();
+    showCallStatus("");
     updateControls();
-  } catch (err) { console.error("Erreur partage écran:", err); }
+  } catch (err) {
+    console.error("Erreur partage écran:", err);
+    if (err && err.name === "NotAllowedError") showCallStatus("Partage d’écran annulé ou refusé. Autorise le partage dans le navigateur, puis réessaie.");
+    else if (err && err.name === "NotFoundError") showCallStatus("Aucun écran ou fenêtre disponible pour le partage.");
+    else showCallStatus("Impossible de démarrer le partage d’écran. Vérifie les permissions du navigateur et réessaie.");
+  }
 }
 
 function stopScreenShare(streamId) {
