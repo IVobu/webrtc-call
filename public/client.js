@@ -947,7 +947,7 @@ function removePeer(peerId) {
   peerAudioSettings.delete(peerId);
   const tile = $(`tile-${peerId}`);
   if (tile) {
-    tile.querySelectorAll("video, audio").forEach((el) => (el.srcObject = null));
+    tile.querySelectorAll("video, audio").forEach(releaseMediaElement);
     tile.remove();
   }
   updateParticipantCount();
@@ -987,7 +987,7 @@ function stopScreenShare(streamId) {
   stream.getTracks().forEach((track) => { track.onended = null; track.stop(); });
   screenStreams.delete(streamId);
   screenAudioSettings.delete(streamId);
-  document.getElementById(`screen-share-${streamId}`)?.remove();
+  releaseScreenShareTile(streamId);
   screenStream = screenStreams.values().next().value || null;
   isScreenSharing = screenStreams.size > 0;
   updateStageEmpty();
@@ -1124,9 +1124,12 @@ function leaveCall() {
   peers.clear();
   peerInfo.clear();
   peerAudioSettings.clear();
-  peerAudioSettings.clear();
+  document.querySelectorAll(".screen-share-tile").forEach((tile) => {
+    const streamId = tile.id.replace(/^screen-share-/, "");
+    releaseScreenShareTile(streamId);
+  });
   document.querySelectorAll(".video-tile:not(#local-tile)").forEach((t) => {
-    t.querySelectorAll("video, audio").forEach((el) => (el.srcObject = null));
+    t.querySelectorAll("video, audio").forEach(releaseMediaElement);
     t.remove();
   });
 
