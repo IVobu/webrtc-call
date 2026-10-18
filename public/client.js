@@ -604,6 +604,25 @@ function applyScreenAudioVolume(ownerId, streamId, audio) {
   audio.muted = ownerId === "local" || !!screen.muted || !!participant.muted;
 }
 
+function releaseMediaElement(el) {
+  if (!el) return;
+  const graph = mediaElementGains.get(el);
+  if (graph) {
+    try { graph.source.disconnect(); } catch (_) {}
+    try { graph.gain.disconnect(); } catch (_) {}
+    mediaElementGains.delete(el);
+  }
+  el.pause();
+  el.srcObject = null;
+}
+
+function releaseScreenShareTile(streamId) {
+  const tile = document.getElementById(`screen-share-${streamId}`);
+  if (!tile) return;
+  tile.querySelectorAll("video, audio").forEach(releaseMediaElement);
+  tile.remove();
+}
+
 function attachCamStream(peerId, stream) {
   const info = getInfo(peerId);
   info.camStream = stream;
@@ -631,7 +650,7 @@ function routeRemoteStream(peerId, stream) {
         info.screenStreams.delete(stream.id);
         info.screenStreamIds.delete(stream.id);
         screenAudioSettings.delete(stream.id);
-        document.getElementById(`screen-share-${stream.id}`)?.remove();
+        releaseScreenShareTile(stream.id);
         info.screenActive = info.screenStreamIds.size > 0;
         info.screenStreamId = info.screenStreamIds.values().next().value || null;
         info.screenStream = info.screenStreams.values().next().value || null;
@@ -885,7 +904,7 @@ function handleSignal(from, data) {
         info.screenStreamIds.delete(id);
         info.screenStreams.delete(id);
         screenAudioSettings.delete(id);
-        document.getElementById(`screen-share-${id}`)?.remove();
+        releaseScreenShareTile(id);
       }
       info.screenActive = info.screenStreamIds.size > 0;
       info.screenStreamId = info.screenStreamIds.values().next().value || null;
@@ -914,7 +933,7 @@ function removePeer(peerId) {
   const info = peerInfo.get(peerId);
   if (info) {
     for (const streamId of info.screenStreams.keys()) {
-      document.getElementById(`screen-share-${streamId}`)?.remove();
+      releaseScreenShareTile(streamId);
       screenAudioSettings.delete(streamId);
     }
   }
